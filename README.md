@@ -52,6 +52,10 @@ Invoke-RestMethod `
 - `GET /health`：服务与 provider 状态。
 - `POST /api/v1/search`：执行完整图并返回回答、引用、证据质量和节点轨迹。
 - `POST /api/v1/search/stream`：以 SSE 推送节点进度和最终结果。
+- `POST /api/v1/research/plan`：分析研究问题；宽泛问题返回候选子问题并暂停线程。
+- `POST /api/v1/research/{thread_id}/selection`：选择或修改具体子问题，并恢复同一 LangGraph 线程。
+
+科研规划接口目前完成 MVP 第一阶段。线程恢复后状态为 `ready`，后续提交将在该节点之后接入 Arxiv 检索和 PDF 全文证据提取。
 
 请求中的 `max_iterations` 表示最多搜索轮数，而不是额外重试次数。证据不足且仍有搜索预算时，图会进入 `rewrite_query`，然后重新搜索；达到上限后会基于已有证据回答并明确证据限制。
 

@@ -49,3 +49,33 @@ def test_request_validation() -> None:
     response = client.post("/api/v1/search", json={"query": "x"})
     assert response.status_code == 422
 
+
+def test_research_question_planning_and_selection() -> None:
+    client = TestClient(make_app())
+    plan_response = client.post(
+        "/api/v1/research/plan", json={"question": "大模型记忆"}
+    )
+    assert plan_response.status_code == 200
+    plan = plan_response.json()
+    assert plan["status"] == "awaiting_selection"
+    assert len(plan["subquestions"]) == 4
+
+    selection_response = client.post(
+        f"/api/v1/research/{plan['thread_id']}/selection",
+        json={"option_id": plan["subquestions"][0]["id"]},
+    )
+    assert selection_response.status_code == 200
+    selected = selection_response.json()
+    assert selected["status"] == "ready"
+    assert selected["selected_question"] == plan["subquestions"][0]["question"]
+
+
+def test_research_selection_validates_thread_and_payload() -> None:
+    client = TestClient(make_app())
+    assert client.post(
+        "/api/v1/research/missing/selection", json={"option_id": "sq_1"}
+    ).status_code == 404
+    assert client.post(
+        "/api/v1/research/missing/selection", json={}
+    ).status_code == 422
+

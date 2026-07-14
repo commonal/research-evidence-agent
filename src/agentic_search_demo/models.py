@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class SearchMode(StrEnum):
@@ -75,3 +75,55 @@ class HealthResponse(BaseModel):
     graph: str
     search_provider: str
     answer_provider: str
+
+
+class ResearchPlanRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(min_length=3, max_length=2_000)
+    thread_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+    @field_validator("question")
+    @classmethod
+    def normalize_question(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if len(normalized) < 3:
+            raise ValueError("question must contain at least 3 non-whitespace characters")
+        return normalized
+
+
+class ResearchSelectionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    option_id: str | None = Field(default=None, min_length=1, max_length=64)
+    question: str | None = Field(default=None, min_length=3, max_length=2_000)
+
+    @model_validator(mode="after")
+    def require_exactly_one_selection(self):
+        if bool(self.option_id) == bool(self.question):
+            raise ValueError("provide exactly one of option_id or question")
+        if self.question:
+            self.question = " ".join(self.question.split())
+        return self
+
+
+class SubQuestionResponse(BaseModel):
+    id: str
+    question: str
+    scope: str
+
+
+class ResearchTraceResponse(BaseModel):
+    node: str
+    message: str
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class ResearchPlanResponse(BaseModel):
+    request_id: str
+    thread_id: str
+    status: Literal["analyzing", "awaiting_selection", "ready"]
+    original_question: str
+    selected_question: str | None
+    subquestions: list[SubQuestionResponse]
+    trace: list[ResearchTraceResponse]

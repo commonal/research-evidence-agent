@@ -3,14 +3,30 @@ from __future__ import annotations
 import os
 from collections.abc import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from agentic_search_demo.config import Settings
 from agentic_search_demo.graph.nodes import AgentDependencies
-from agentic_search_demo.models import HealthResponse, SearchRequest, SearchResponse
+from agentic_search_demo.models import (
+    HealthResponse,
+    ResearchPlanRequest,
+    ResearchPlanResponse,
+    ResearchSelectionRequest,
+    SearchRequest,
+    SearchResponse,
+)
 from agentic_search_demo.providers.demo import DemoAnswerGenerator, DemoSearchProvider
+from agentic_search_demo.research.nodes import (
+    InvalidResearchSelection,
+    ResearchDependencies,
+)
+from agentic_search_demo.research.planner import DemoQuestionPlanner
+from agentic_search_demo.research.service import (
+    ResearchPlanningService,
+    ResearchThreadNotFound,
+)
 from agentic_search_demo.service import SearchService, sse_frame
 
 
@@ -33,11 +49,18 @@ def create_service(settings: Settings | None = None) -> SearchService:
     )
 
 
-def create_app(service: SearchService | None = None) -> FastAPI:
+def create_app(
+    service: SearchService | None = None,
+    research_service: ResearchPlanningService | None = None,
+) -> FastAPI:
     service = service or create_service()
+    research_service = research_service or ResearchPlanningService(
+        ResearchDependencies(question_planner=DemoQuestionPlanner())
+    )
     settings = Settings.from_env()
     app = FastAPI(title="Research Evidence Agent", version="0.1.0")
     app.state.search_service = service
+    app.state.research_service = research_service
     app.state.settings = settings
     app.add_middleware(
         CORSMiddleware,
@@ -71,6 +94,24 @@ def create_app(service: SearchService | None = None) -> FastAPI:
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    @app.post("/api/v1/research/plan", response_model=ResearchPlanResponse)
+    async def plan_research(request: ResearchPlanRequest) -> ResearchPlanResponse:
+        return await research_service.plan(request)
+
+    @app.post(
+        "/api/v1/research/{thread_id}/selection",
+        response_model=ResearchPlanResponse,
+    )
+    async def select_research_question(
+        thread_id: str, request: ResearchSelectionRequest
+    ) -> ResearchPlanResponse:
+        try:
+            return await research_service.select(thread_id, request)
+        except ResearchThreadNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidResearchSelection as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     return app
 
