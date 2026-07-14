@@ -15,7 +15,7 @@
                                 校验引用
 ```
 
-项目使用 LangGraph 表达条件分支、补充搜索循环和 `MemorySaver` 线程状态，使用 FastAPI 提供普通 JSON 与 SSE 流式接口。默认 provider 不需要 API Key，可以验证图、接口和状态流转。项目不再导入或动态加载父项目代码。
+项目使用 LangGraph 表达条件分支、补充搜索循环和 `MemorySaver` 线程状态，使用 FastAPI 提供普通 JSON 与 SSE 流式接口，并内置一个无需前端构建工具的科研工作台。默认 provider 不需要 API Key，可以验证图、接口和状态流转。项目不再导入或动态加载父项目代码。
 
 科研 MVP 已实现“问题收敛 → 学术检索式生成 → arXiv 论文发现”这一段主链路。宽泛问题会通过 LangGraph `interrupt/resume` 等待用户选择；具体问题会生成英文检索式，查询 arXiv，并对论文元数据去重。PDF 全文证据提取与可追溯结论仍属于下一阶段。详细范围见 [PROJECT_GUIDE.md](PROJECT_GUIDE.md)。
 
@@ -26,10 +26,10 @@
 ```powershell
 uv sync --dev
 uv run pytest
-uv run uvicorn research_evidence_agent.api:app --app-dir src --reload --port 8010
+uv run uvicorn research_evidence_agent.api:app --app-dir src --reload --port 8010 --env-file .env
 ```
 
-打开 `http://127.0.0.1:8010/docs`，或调用：
+打开 `http://127.0.0.1:8010/` 使用科研工作台；接口文档位于 `http://127.0.0.1:8010/docs`。也可以直接调用：
 
 ```powershell
 $body = @{
@@ -53,9 +53,11 @@ Invoke-RestMethod `
 - `POST /api/v1/search`：执行完整图并返回回答、引用、证据质量和节点轨迹。
 - `POST /api/v1/search/stream`：以 SSE 推送节点进度和最终结果。
 - `POST /api/v1/research/plan`：分析研究问题；宽泛问题返回候选子问题并暂停线程。
+- `POST /api/v1/research/stream`：以 SSE 推送科研节点的运行、完成、等待以及最终结果。
 - `POST /api/v1/research/{thread_id}/selection`：选择或修改具体子问题，恢复线程并执行学术检索。
+- `POST /api/v1/research/{thread_id}/selection/stream`：以 SSE 恢复宽泛问题对应的研究线程。
 
-检索完成后状态为 `papers_ready`，响应包含 `search_plan`、去重后的 `papers` 和可诊断的 `search_errors`。默认使用离线 Demo Provider；启用真实 arXiv 检索时可设置以下环境变量：
+检索完成后状态为 `papers_ready`，响应包含 `search_plan`、去重后的 `papers`、可诊断的 `search_errors`，以及模型调用的 `usage` 汇总与明细。DeepSeek usage 包括输入、输出、总 token、Prompt 缓存命中/未命中和推理 token。默认使用离线 Demo Provider；启用真实 arXiv 检索时可设置以下环境变量：
 
 ```dotenv
 RESEARCH_PAPER_PROVIDER=arxiv
@@ -81,6 +83,7 @@ src/research_evidence_agent/
 ├── config.py               # 环境配置
 ├── models.py               # API 模型
 ├── service.py              # Graph 调用与流式事件转换
+├── web/                    # 内置科研工作台 HTML / CSS / JavaScript
 ├── graph/
 │   ├── builder.py          # LangGraph 节点和边
 │   ├── nodes.py            # 搜索 Agent 节点实现

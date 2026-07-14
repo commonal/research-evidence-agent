@@ -127,6 +127,28 @@ class AcademicSearchPlanResponse(BaseModel):
     keywords: list[str]
 
 
+class LLMUsageCallResponse(BaseModel):
+    operation: str
+    provider: str
+    model: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    prompt_cache_hit_tokens: int = 0
+    prompt_cache_miss_tokens: int = 0
+    reasoning_tokens: int = 0
+
+
+class LLMUsageSummaryResponse(BaseModel):
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    prompt_cache_hit_tokens: int = 0
+    prompt_cache_miss_tokens: int = 0
+    reasoning_tokens: int = 0
+    calls: list[LLMUsageCallResponse] = Field(default_factory=list)
+
+
 class PaperResponse(BaseModel):
     arxiv_id: str
     title: str
@@ -156,6 +178,7 @@ class ResearchPlanResponse(BaseModel):
     selected_question: str | None
     subquestions: list[SubQuestionResponse]
     search_plan: AcademicSearchPlanResponse | None = None
+    usage: LLMUsageSummaryResponse = Field(default_factory=LLMUsageSummaryResponse)
     papers: list[PaperResponse] = Field(default_factory=list)
     search_errors: list[str] = Field(default_factory=list)
     trace: list[ResearchTraceResponse]

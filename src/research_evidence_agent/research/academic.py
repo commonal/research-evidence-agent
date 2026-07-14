@@ -6,13 +6,13 @@ from typing import Protocol
 
 import httpx
 
-from research_evidence_agent.research.state import AcademicSearchPlan, Paper
+from research_evidence_agent.research.state import AcademicQueryPlanResult, Paper
 
 
 class AcademicQueryPlanner(Protocol):
     name: str
 
-    async def plan(self, question: str) -> AcademicSearchPlan: ...
+    async def plan(self, question: str) -> AcademicQueryPlanResult: ...
 
 
 class PaperProvider(Protocol):
@@ -35,7 +35,7 @@ class DemoAcademicQueryPlanner:
         "向量": "vector retrieval",
     }
 
-    async def plan(self, question: str) -> AcademicSearchPlan:
+    async def plan(self, question: str) -> AcademicQueryPlanResult:
         lowered = question.lower()
         translated = [english for chinese, english in self._terms.items() if chinese in question]
         ascii_terms = re.findall(r"[A-Za-z][A-Za-z0-9_-]{1,}", lowered)
@@ -62,6 +62,7 @@ class OpenAICompatibleAcademicQueryPlanner:
         model: str,
         base_url: str = "https://api.openai.com/v1",
         timeout_seconds: float = 30.0,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         if not api_key:
             raise ValueError("LLM_API_KEY is required for the LLM academic query planner")
@@ -69,8 +70,9 @@ class OpenAICompatibleAcademicQueryPlanner:
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
+        self.transport = transport
 
-    async def plan(self, question: str) -> AcademicSearchPlan:
+    async def plan(self, question: str) -> AcademicQueryPlanResult:
         prompt = (
             "Convert the research question into 1 to 3 concise Arxiv API search_query "
             "expressions. Use English academic terminology and fields such as all:, ti:, "
@@ -78,7 +80,10 @@ class OpenAICompatibleAcademicQueryPlanner:
             "a string and may use AND/OR. Do not invent paper titles.\n\n"
             f"Research question: {question}"
         )
-        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self.timeout_seconds,
+            transport=self.transport,
+        ) as client:
             response = await client.post(
                 f"{self.base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {self.api_key}"},
@@ -90,7 +95,8 @@ class OpenAICompatibleAcademicQueryPlanner:
                 },
             )
             response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
+        response_payload = response.json()
+        content = response_payload["choices"][0]["message"]["content"]
         payload = json.loads(_strip_json_fence(str(content)))
         queries = [_normalize_arxiv_query(item) for item in payload.get("queries", [])]
         keywords = [" ".join(str(item).split()) for item in payload.get("keywords", [])]
@@ -98,7 +104,12 @@ class OpenAICompatibleAcademicQueryPlanner:
         keywords = _dedupe([item for item in keywords if item])[:8]
         if not queries:
             raise ValueError("LLM query planner returned no usable Arxiv queries")
-        return {"queries": queries, "keywords": keywords}
+        usage = _usage_record(
+            response_payload.get("usage", {}),
+            provider="deepseek" if "deepseek.com" in self.base_url else "openai_compatible",
+            model=str(response_payload.get("model") or self.model),
+        )
+        return {"queries": queries, "keywords": keywords, "usage": usage}
 
 
 class DemoPaperProvider:
@@ -179,3 +190,31 @@ def _strip_json_fence(value: str) -> str:
         value = re.sub(r"^```(?:json)?\s*", "", value)
         value = re.sub(r"\s*```$", "", value)
     return value
+
+
+def _usage_record(payload: object, *, provider: str, model: str) -> dict:
+    usage = payload if isinstance(payload, dict) else {}
+    details = usage.get("completion_tokens_details")
+    details = details if isinstance(details, dict) else {}
+    return {
+        "operation": "build_search_queries",
+        "provider": provider,
+        "model": model,
+        "prompt_tokens": _integer(usage.get("prompt_tokens")),
+        "completion_tokens": _integer(usage.get("completion_tokens")),
+        "total_tokens": _integer(usage.get("total_tokens")),
+        "prompt_cache_hit_tokens": _integer(
+            usage.get("prompt_cache_hit_tokens")
+        ),
+        "prompt_cache_miss_tokens": _integer(
+            usage.get("prompt_cache_miss_tokens")
+        ),
+        "reasoning_tokens": _integer(details.get("reasoning_tokens")),
+    }
+
+
+def _integer(value: object) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0

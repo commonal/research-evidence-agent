@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Research Evidence Agent</title>
+    <link rel="stylesheet" href="/assets/app.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Research Evidence Agent 首页">
+          <span class="brand-mark" aria-hidden="true">R</span>
+          <span>
+            <strong>Research Evidence</strong>
+            <small>Agent Workspace</small>
+          </span>
+        </a>
+        <div class="topbar-actions">
+          <span class="environment-pill">LOCAL MVP</span>
+          <span class="service-state" id="service-state">
+            <i></i><span>连接服务中</span>
+          </span>
+          <a class="docs-link" href="/docs" target="_blank" rel="noreferrer">API 文档</a>
+        </div>
+      </header>
+
+      <main>
+        <section class="hero">
+          <div>
+            <p class="eyebrow">AI / 计算机科研证据工作台</p>
+            <h1>把研究问题，变成一条<br /><em>可观察的证据路径。</em></h1>
+          </div>
+          <p class="hero-copy">
+            收敛研究问题、生成学术检索式并发现 arXiv 论文。每个节点、模型调用和
+            token 消耗都在同一条时间线上呈现。
+          </p>
+        </section>
+
+        <div class="workspace-grid">
+          <div class="primary-column">
+            <section class="panel question-panel">
+              <div class="panel-heading">
+                <div>
+                  <span class="section-index">01</span>
+                  <h2>提出研究问题</h2>
+                </div>
+                <span class="hint">Ctrl + Enter 开始</span>
+              </div>
+              <form id="research-form">
+                <label class="sr-only" for="question-input">研究问题</label>
+                <textarea
+                  id="question-input"
+                  name="question"
+                  minlength="3"
+                  maxlength="2000"
+                  rows="5"
+                  placeholder="例如：长上下文模型能否在多跳问答任务中替代 RAG？"
+                  required
+                ></textarea>
+                <div class="example-row" aria-label="示例问题">
+                  <span>试试：</span>
+                  <button type="button" class="example-chip" data-question="长上下文模型能否在多跳问答任务中替代 RAG？">长上下文 vs RAG</button>
+                  <button type="button" class="example-chip" data-question="大模型记忆">宽泛问题拆解</button>
+                </div>
+                <div class="form-footer">
+                  <p>当前范围：问题规划 · DeepSeek 检索式 · arXiv 论文发现</p>
+                  <button class="primary-button" id="run-button" type="submit">
+                    <span>开始研究</span><b aria-hidden="true">→</b>
+                  </button>
+                </div>
+              </form>
+            </section>
+
+            <section class="panel workflow-panel" id="workflow-panel">
+              <div class="panel-heading">
+                <div>
+                  <span class="section-index">02</span>
+                  <h2>工作流进度</h2>
+                </div>
+                <span class="status-badge idle" id="run-status">等待开始</span>
+              </div>
+
+              <div class="current-activity" id="current-activity">
+                <span class="activity-signal"><i></i><i></i><i></i></span>
+                <div>
+                  <small>当前活动</small>
+                  <strong id="activity-message">输入问题后，工作流将在这里实时更新</strong>
+                </div>
+              </div>
+
+              <ol class="timeline" id="workflow-timeline">
+                <li data-node="analyze_question">
+                  <span class="step-marker">1</span>
+                  <div><strong>分析问题</strong><p>判断研究范围是否足够明确</p></div>
+                  <span class="step-state">待执行</span>
+                </li>
+                <li data-node="generate_subquestions">
+                  <span class="step-marker">2</span>
+                  <div><strong>拆解子问题</strong><p>宽泛问题生成候选研究方向</p></div>
+                  <span class="step-state">条件节点</span>
+                </li>
+                <li data-node="wait_for_user_selection">
+                  <span class="step-marker">3</span>
+                  <div><strong>用户确认</strong><p>选择或修改最终研究问题</p></div>
+                  <span class="step-state">条件节点</span>
+                </li>
+                <li data-node="finalize_question">
+                  <span class="step-marker">4</span>
+                  <div><strong>确认研究问题</strong><p>锁定本次检索的研究边界</p></div>
+                  <span class="step-state">待执行</span>
+                </li>
+                <li data-node="build_search_queries">
+                  <span class="step-marker">5</span>
+                  <div><strong>生成检索式</strong><p>调用 LLM 生成英文 arXiv 查询</p></div>
+                  <span class="step-state">待执行</span>
+                </li>
+                <li data-node="search_academic_papers">
+                  <span class="step-marker">6</span>
+                  <div><strong>检索论文</strong><p>查询 arXiv、合并结果并去重</p></div>
+                  <span class="step-state">待执行</span>
+                </li>
+              </ol>
+            </section>
+
+            <section class="panel selection-panel is-hidden" id="selection-panel">
+              <div class="panel-heading">
+                <div>
+                  <span class="section-index">03</span>
+                  <h2>选择研究方向</h2>
+                </div>
+                <span class="status-badge waiting">等待你的选择</span>
+              </div>
+              <p class="section-copy">原问题范围较宽。选择一个候选问题，或输入你修改后的具体问题。</p>
+              <div class="selection-options" id="selection-options"></div>
+              <label class="custom-question-label" for="custom-question">或者，自定义最终问题</label>
+              <textarea id="custom-question" rows="3" placeholder="输入更具体、可检索的研究问题"></textarea>
+              <div class="selection-actions">
+                <button type="button" class="primary-button" id="continue-button">
+                  <span>确认并继续</span><b aria-hidden="true">→</b>
+                </button>
+              </div>
+            </section>
+
+            <section class="panel result-panel is-hidden" id="query-panel">
+              <div class="panel-heading">
+                <div>
+                  <span class="section-index">03</span>
+                  <h2>学术检索策略</h2>
+                </div>
+                <span class="micro-label" id="query-count">0 条检索式</span>
+              </div>
+              <div class="keyword-list" id="keyword-list"></div>
+              <div class="query-list" id="query-list"></div>
+            </section>
+
+            <section class="panel papers-panel is-hidden" id="papers-panel">
+              <div class="panel-heading">
+                <div>
+                  <span class="section-index">04</span>
+                  <h2>候选论文</h2>
+                </div>
+                <span class="micro-label" id="paper-count">0 篇</span>
+              </div>
+              <p class="section-copy">当前为摘要级候选集，尚未经过全文证据提取与语义重排。</p>
+              <div class="paper-list" id="paper-list"></div>
+            </section>
+
+            <section class="error-panel is-hidden" id="error-panel" role="alert">
+              <strong>流程执行失败</strong>
+              <p id="error-message"></p>
+            </section>
+          </div>
+
+          <aside class="side-column">
+            <section class="panel metrics-panel">
+              <div class="panel-heading compact">
+                <div><span class="section-index">LIVE</span><h2>模型用量</h2></div>
+              </div>
+              <div class="model-chip" id="model-chip">等待模型调用</div>
+              <div class="metrics-grid">
+                <div><small>输入 Token</small><strong id="prompt-tokens">—</strong></div>
+                <div><small>输出 Token</small><strong id="completion-tokens">—</strong></div>
+                <div><small>缓存命中</small><strong id="cache-hit-tokens">—</strong></div>
+                <div><small>总 Token</small><strong id="total-tokens">—</strong></div>
+              </div>
+              <div class="cache-meter">
+                <div><span>Prompt 缓存命中率</span><strong id="cache-hit-rate">—</strong></div>
+                <div class="meter-track"><i id="cache-meter-value"></i></div>
+              </div>
+              <p class="metric-note" id="metric-note">完成 LLM 调用后显示供应商返回的实际 usage。</p>
+            </section>
+
+            <section class="panel run-panel">
+              <div class="panel-heading compact">
+                <div><span class="section-index">RUN</span><h2>本次运行</h2></div>
+              </div>
+              <dl class="run-details">
+                <div><dt>状态</dt><dd id="detail-status">未开始</dd></div>
+                <div><dt>线程</dt><dd id="detail-thread">—</dd></div>
+                <div><dt>最终问题</dt><dd id="detail-question">—</dd></div>
+                <div><dt>数据源</dt><dd>arXiv</dd></div>
+              </dl>
+            </section>
+
+            <section class="scope-card">
+              <span>当前产品边界</span>
+              <strong>Paper discovery, not conclusion.</strong>
+              <p>下一阶段将接入论文筛选、PDF 全文解析、证据定位和结论生成。</p>
+            </section>
+          </aside>
+        </div>
+      </main>
+
+      <footer>
+        <span>Research Evidence Agent · Local MVP</span>
+        <span>LangGraph × FastAPI × arXiv</span>
+      </footer>
+    </div>
+    <script src="/assets/app.js" defer></script>
+  </body>
+</html>

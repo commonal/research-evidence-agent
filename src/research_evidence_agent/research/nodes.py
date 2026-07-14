@@ -127,17 +127,23 @@ async def build_search_queries(
     queries = [" ".join(query.split()) for query in plan.get("queries", []) if query.strip()]
     if not queries:
         raise ValueError("academic query planner returned no queries")
-    plan = {"queries": queries[:3], "keywords": plan.get("keywords", [])[:8]}
+    usage = plan.get("usage")
+    search_plan = {"queries": queries[:3], "keywords": plan.get("keywords", [])[:8]}
+    usage_records = state.get("llm_usage", [])
+    if usage:
+        usage_records = [*usage_records, usage]
     return {
-        "search_plan": plan,
+        "search_plan": search_plan,
+        "llm_usage": usage_records,
         "status": "searching",
         "trace": _append_trace(
             state,
             _trace(
                 "build_search_queries",
-                f"已生成 {len(plan['queries'])} 个 Arxiv 检索式",
-                queries=plan["queries"],
+                f"已生成 {len(search_plan['queries'])} 个 Arxiv 检索式",
+                queries=search_plan["queries"],
                 planner=deps.academic_query_planner.name,
+                usage=usage,
             ),
         ),
     }

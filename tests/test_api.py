@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from fastapi.testclient import TestClient
 
 from research_evidence_agent.api import create_app
@@ -17,6 +19,31 @@ def make_app():
         )
     )
     return create_app(service)
+
+
+def parse_sse(payload: str) -> list[tuple[str, dict]]:
+    events: list[tuple[str, dict]] = []
+    for frame in payload.replace("\r\n", "\n").strip().split("\n\n"):
+        event_name = "message"
+        data = ""
+        for line in frame.splitlines():
+            if line.startswith("event:"):
+                event_name = line.removeprefix("event:").strip()
+            elif line.startswith("data:"):
+                data += line.removeprefix("data:").strip()
+        if data:
+            events.append((event_name, json.loads(data)))
+    return events
+
+
+def test_research_workspace_and_assets_are_served() -> None:
+    client = TestClient(make_app())
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "Research Evidence Agent" in page.text
+    assert 'id="workflow-timeline"' in page.text
+    assert client.get("/assets/app.css").status_code == 200
+    assert client.get("/assets/app.js").status_code == 200
 
 
 def test_health_and_search_endpoint() -> None:
@@ -70,6 +97,32 @@ def test_research_question_planning_and_selection() -> None:
     assert selected["selected_question"] == plan["subquestions"][0]["question"]
     assert selected["search_plan"]["queries"]
     assert selected["papers"]
+
+
+def test_research_stream_reports_progress_and_resumes_selection() -> None:
+    client = TestClient(make_app())
+    response = client.post(
+        "/api/v1/research/stream",
+        json={"question": "大模型记忆"},
+    )
+    assert response.status_code == 200
+    events = parse_sse(response.text)
+    progress = [data for name, data in events if name == "progress"]
+    result = [data for name, data in events if name == "result"][-1]
+    assert progress[0]["node"] == "analyze_question"
+    assert progress[0]["state"] == "running"
+    assert result["status"] == "awaiting_selection"
+
+    selection = client.post(
+        f"/api/v1/research/{result['thread_id']}/selection/stream",
+        json={"option_id": result["subquestions"][0]["id"]},
+    )
+    selection_events = parse_sse(selection.text)
+    selection_result = [
+        data for name, data in selection_events if name == "result"
+    ][-1]
+    assert selection_result["status"] == "papers_ready"
+    assert selection_result["papers"]
 
 
 def test_research_selection_validates_thread_and_payload() -> None:

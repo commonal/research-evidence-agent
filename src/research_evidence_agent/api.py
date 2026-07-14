@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from research_evidence_agent.config import Settings
 from research_evidence_agent.graph.nodes import AgentDependencies
@@ -34,6 +36,9 @@ from research_evidence_agent.research.service import (
     ResearchThreadNotFound,
 )
 from research_evidence_agent.service import SearchService, sse_frame
+
+
+WEB_DIR = Path(__file__).parent / "web"
 
 
 def create_service(settings: Settings | None = None) -> SearchService:
@@ -113,12 +118,21 @@ def create_app(
     app.state.search_service = service
     app.state.research_service = research_service
     app.state.settings = settings
+    app.mount("/assets", StaticFiles(directory=WEB_DIR), name="assets")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=os.getenv("CORS_ALLOW_ORIGINS", "*").split(","),
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.get("/", include_in_schema=False)
+    async def research_workspace() -> FileResponse:
+        return FileResponse(WEB_DIR / "index.html")
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon() -> Response:
+        return Response(status_code=204)
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
@@ -150,6 +164,26 @@ def create_app(
     async def plan_research(request: ResearchPlanRequest) -> ResearchPlanResponse:
         return await research_service.plan(request)
 
+    @app.post("/api/v1/research/stream")
+    async def stream_research_plan(
+        request: ResearchPlanRequest,
+    ) -> StreamingResponse:
+        async def events() -> AsyncIterator[str]:
+            try:
+                async for item in research_service.stream_plan(request):
+                    yield sse_frame(item["event"], item["data"])
+            except Exception as exc:
+                yield sse_frame(
+                    "error",
+                    {"message": str(exc), "type": type(exc).__name__},
+                )
+
+        return StreamingResponse(
+            events(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
     @app.post(
         "/api/v1/research/{thread_id}/selection",
         response_model=ResearchPlanResponse,
@@ -163,6 +197,26 @@ def create_app(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except InvalidResearchSelection as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/v1/research/{thread_id}/selection/stream")
+    async def stream_research_selection(
+        thread_id: str, request: ResearchSelectionRequest
+    ) -> StreamingResponse:
+        async def events() -> AsyncIterator[str]:
+            try:
+                async for item in research_service.stream_select(thread_id, request):
+                    yield sse_frame(item["event"], item["data"])
+            except Exception as exc:
+                yield sse_frame(
+                    "error",
+                    {"message": str(exc), "type": type(exc).__name__},
+                )
+
+        return StreamingResponse(
+            events(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     return app
 

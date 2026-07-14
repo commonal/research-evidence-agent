@@ -947,7 +947,7 @@ verify_output
 END
 ```
 
-当前实现进度（2026-07-14）：已完成到 `build_search_queries` 和 arXiv 论文元数据检索，并实现跨检索式去重、匹配检索式合并及部分查询失败保留。接口状态以 `papers_ready` 或 `no_results` 结束。`select_papers` 及其后的 PDF 全文证据链路尚未实现，因此当前输出只能视为摘要级候选论文集。
+当前实现进度（2026-07-15）：已完成到 `build_search_queries` 和 arXiv 论文元数据检索，并实现跨检索式去重、匹配检索式合并及部分查询失败保留。FastAPI 已内置科研工作台，通过 SSE 显示节点运行状态、宽泛问题选择、检索式、论文结果及 LLM token/缓存 usage。接口状态以 `papers_ready` 或 `no_results` 结束。`select_papers` 及其后的 PDF 全文证据链路尚未实现，因此当前输出只能视为摘要级候选论文集。
 
 #### 第一版明确不实现
 

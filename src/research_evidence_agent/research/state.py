@@ -32,6 +32,22 @@ class AcademicSearchPlan(TypedDict):
     keywords: list[str]
 
 
+class LLMUsageRecord(TypedDict):
+    operation: str
+    provider: str
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    prompt_cache_hit_tokens: int
+    prompt_cache_miss_tokens: int
+    reasoning_tokens: int
+
+
+class AcademicQueryPlanResult(AcademicSearchPlan, total=False):
+    usage: LLMUsageRecord
+
+
 class Paper(TypedDict):
     arxiv_id: str
     title: str
@@ -55,6 +71,7 @@ class ResearchState(TypedDict, total=False):
     status: ResearchStatus
     subquestions: list[SubQuestion]
     search_plan: AcademicSearchPlan
+    llm_usage: list[LLMUsageRecord]
     papers: list[Paper]
     search_errors: list[str]
     trace: list[ResearchTraceEvent]
