@@ -7,9 +7,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from agentic_search_demo.config import Settings
-from agentic_search_demo.graph.nodes import AgentDependencies
-from agentic_search_demo.models import (
+from research_evidence_agent.config import Settings
+from research_evidence_agent.graph.nodes import AgentDependencies
+from research_evidence_agent.models import (
     HealthResponse,
     ResearchPlanRequest,
     ResearchPlanResponse,
@@ -17,17 +17,23 @@ from agentic_search_demo.models import (
     SearchRequest,
     SearchResponse,
 )
-from agentic_search_demo.providers.demo import DemoAnswerGenerator, DemoSearchProvider
-from agentic_search_demo.research.nodes import (
+from research_evidence_agent.providers.arxiv import ArxivPaperProvider
+from research_evidence_agent.providers.demo import DemoAnswerGenerator, DemoSearchProvider
+from research_evidence_agent.research.academic import (
+    DemoAcademicQueryPlanner,
+    DemoPaperProvider,
+    OpenAICompatibleAcademicQueryPlanner,
+)
+from research_evidence_agent.research.nodes import (
     InvalidResearchSelection,
     ResearchDependencies,
 )
-from agentic_search_demo.research.planner import DemoQuestionPlanner
-from agentic_search_demo.research.service import (
+from research_evidence_agent.research.planner import DemoQuestionPlanner
+from research_evidence_agent.research.service import (
     ResearchPlanningService,
     ResearchThreadNotFound,
 )
-from agentic_search_demo.service import SearchService, sse_frame
+from research_evidence_agent.service import SearchService, sse_frame
 
 
 def create_service(settings: Settings | None = None) -> SearchService:
@@ -49,14 +55,59 @@ def create_service(settings: Settings | None = None) -> SearchService:
     )
 
 
+def create_research_service(
+    settings: Settings | None = None,
+) -> ResearchPlanningService:
+    settings = settings or Settings.from_env()
+
+    if settings.academic_query_planner == "demo":
+        academic_query_planner = DemoAcademicQueryPlanner()
+    elif settings.academic_query_planner == "openai_compatible":
+        if not settings.llm_api_key:
+            raise ValueError(
+                "LLM_API_KEY is required when ACADEMIC_QUERY_PLANNER="
+                "openai_compatible"
+            )
+        academic_query_planner = OpenAICompatibleAcademicQueryPlanner(
+            api_key=settings.llm_api_key,
+            base_url=settings.llm_base_url,
+            model=settings.llm_model,
+        )
+    else:
+        raise ValueError(
+            "Unsupported ACADEMIC_QUERY_PLANNER: "
+            f"{settings.academic_query_planner}"
+        )
+
+    if settings.research_paper_provider == "demo":
+        paper_provider = DemoPaperProvider()
+    elif settings.research_paper_provider == "arxiv":
+        paper_provider = ArxivPaperProvider(
+            api_url=settings.arxiv_api_url,
+            min_interval_seconds=settings.arxiv_min_interval_seconds,
+        )
+    else:
+        raise ValueError(
+            "Unsupported RESEARCH_PAPER_PROVIDER: "
+            f"{settings.research_paper_provider}"
+        )
+
+    return ResearchPlanningService(
+        ResearchDependencies(
+            question_planner=DemoQuestionPlanner(),
+            academic_query_planner=academic_query_planner,
+            paper_provider=paper_provider,
+            max_results_per_query=settings.research_max_results_per_query,
+        )
+    )
+
+
 def create_app(
     service: SearchService | None = None,
     research_service: ResearchPlanningService | None = None,
 ) -> FastAPI:
     service = service or create_service()
-    research_service = research_service or ResearchPlanningService(
-        ResearchDependencies(question_planner=DemoQuestionPlanner())
-    )
+    research_service = research_service or create_research_service()
     settings = Settings.from_env()
     app = FastAPI(title="Research Evidence Agent", version="0.1.0")
     app.state.search_service = service

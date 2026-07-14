@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from langgraph.graph import END, StateGraph
 
-from agentic_search_demo.graph.nodes import (
+from research_evidence_agent.graph.nodes import (
     AgentDependencies,
     analyze_query,
     generate_answer,
@@ -15,7 +15,7 @@ from agentic_search_demo.graph.nodes import (
     search_sources,
     verify_citations,
 )
-from agentic_search_demo.graph.state import SearchState
+from research_evidence_agent.graph.state import SearchState
 
 
 def build_graph(deps: AgentDependencies, *, checkpointer=None):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from agentic_search_demo.research.state import SubQuestion
+from research_evidence_agent.research.state import SubQuestion
 
 
 class QuestionPlanner(Protocol):

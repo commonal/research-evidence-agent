@@ -1,2 +1,0 @@
-"""Agentic search graph."""
-

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 
-from agentic_search_demo.graph.nodes import AgentDependencies
-from agentic_search_demo.models import SearchRequest
-from agentic_search_demo.providers.demo import DemoAnswerGenerator, DemoSearchProvider
-from agentic_search_demo.service import SearchService
+from research_evidence_agent.graph.nodes import AgentDependencies
+from research_evidence_agent.models import SearchRequest
+from research_evidence_agent.providers.demo import DemoAnswerGenerator, DemoSearchProvider
+from research_evidence_agent.service import SearchService
 
 
 class ScriptedProvider:

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from agentic_search_demo.api import create_app
-from agentic_search_demo.graph.nodes import AgentDependencies
-from agentic_search_demo.providers.demo import DemoAnswerGenerator, DemoSearchProvider
-from agentic_search_demo.service import SearchService
+from research_evidence_agent.api import create_app
+from research_evidence_agent.graph.nodes import AgentDependencies
+from research_evidence_agent.providers.demo import DemoAnswerGenerator, DemoSearchProvider
+from research_evidence_agent.service import SearchService
 
 
 def make_app():
@@ -66,8 +66,10 @@ def test_research_question_planning_and_selection() -> None:
     )
     assert selection_response.status_code == 200
     selected = selection_response.json()
-    assert selected["status"] == "ready"
+    assert selected["status"] == "papers_ready"
     assert selected["selected_question"] == plan["subquestions"][0]["question"]
+    assert selected["search_plan"]["queries"]
+    assert selected["papers"]
 
 
 def test_research_selection_validates_thread_and_payload() -> None:

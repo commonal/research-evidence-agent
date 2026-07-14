@@ -7,14 +7,14 @@ from typing import Any
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
-from agentic_search_demo.models import (
+from research_evidence_agent.models import (
     ResearchPlanRequest,
     ResearchPlanResponse,
     ResearchSelectionRequest,
 )
-from agentic_search_demo.research.builder import build_research_planning_graph
-from agentic_search_demo.research.nodes import ResearchDependencies
-from agentic_search_demo.research.state import ResearchState
+from research_evidence_agent.research.builder import build_research_planning_graph
+from research_evidence_agent.research.nodes import ResearchDependencies
+from research_evidence_agent.research.state import ResearchState
 
 
 class ResearchThreadNotFound(LookupError):
@@ -45,6 +45,9 @@ class ResearchPlanningService:
             is_broad=False,
             status="analyzing",
             subquestions=[],
+            search_plan={"queries": [], "keywords": []},
+            papers=[],
+            search_errors=[],
             trace=[],
         )
         config = self._config(thread_id)
@@ -78,6 +81,9 @@ class ResearchPlanningService:
             original_question=state["original_question"],
             selected_question=state.get("selected_question") or None,
             subquestions=state.get("subquestions", []),
+            search_plan=state.get("search_plan"),
+            papers=state.get("papers", []),
+            search_errors=state.get("search_errors", []),
             trace=state.get("trace", []),
         )
 

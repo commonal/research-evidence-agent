@@ -6,8 +6,8 @@ import re
 from dataclasses import dataclass
 from typing import Callable
 
-from agentic_search_demo.graph.state import Citation, SearchState, Source, TraceEvent
-from agentic_search_demo.providers.base import AnswerGenerator, SearchProvider
+from research_evidence_agent.graph.state import Citation, SearchState, Source, TraceEvent
+from research_evidence_agent.providers.base import AnswerGenerator, SearchProvider
 
 
 @dataclass(frozen=True, slots=True)

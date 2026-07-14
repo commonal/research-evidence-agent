@@ -4,8 +4,13 @@ from dataclasses import dataclass
 
 from langgraph.types import interrupt
 
-from agentic_search_demo.research.planner import QuestionPlanner
-from agentic_search_demo.research.state import (
+from research_evidence_agent.research.academic import (
+    AcademicQueryPlanner,
+    PaperProvider,
+)
+from research_evidence_agent.research.planner import QuestionPlanner
+from research_evidence_agent.research.state import (
+    Paper,
     ResearchState,
     ResearchTraceEvent,
     SubQuestion,
@@ -19,6 +24,9 @@ class InvalidResearchSelection(ValueError):
 @dataclass(frozen=True, slots=True)
 class ResearchDependencies:
     question_planner: QuestionPlanner
+    academic_query_planner: AcademicQueryPlanner
+    paper_provider: PaperProvider
+    max_results_per_query: int = 5
 
 
 def _trace(node: str, message: str, **details) -> ResearchTraceEvent:
@@ -111,8 +119,83 @@ def finalize_question(state: ResearchState) -> dict:
     }
 
 
+async def build_search_queries(
+    state: ResearchState, deps: ResearchDependencies
+) -> dict:
+    selected = state["selected_question"]
+    plan = await deps.academic_query_planner.plan(selected)
+    queries = [" ".join(query.split()) for query in plan.get("queries", []) if query.strip()]
+    if not queries:
+        raise ValueError("academic query planner returned no queries")
+    plan = {"queries": queries[:3], "keywords": plan.get("keywords", [])[:8]}
+    return {
+        "search_plan": plan,
+        "status": "searching",
+        "trace": _append_trace(
+            state,
+            _trace(
+                "build_search_queries",
+                f"已生成 {len(plan['queries'])} 个 Arxiv 检索式",
+                queries=plan["queries"],
+                planner=deps.academic_query_planner.name,
+            ),
+        ),
+    }
+
+
+async def search_academic_papers(
+    state: ResearchState, deps: ResearchDependencies
+) -> dict:
+    merged: dict[str, Paper] = {}
+    errors: list[str] = []
+    queries = state["search_plan"]["queries"]
+    for query in queries:
+        try:
+            results = await deps.paper_provider.search(
+                query, max_results=deps.max_results_per_query
+            )
+        except Exception as exc:  # preserve partial results from other queries
+            errors.append(f"{query}: {exc}")
+            continue
+        for paper in results:
+            existing = merged.get(paper["arxiv_id"])
+            if existing is None:
+                merged[paper["arxiv_id"]] = paper
+                continue
+            existing["matched_queries"] = _dedupe(
+                [*existing["matched_queries"], *paper["matched_queries"]]
+            )
+            existing["rank"] = min(existing["rank"], paper["rank"])
+
+    papers = sorted(
+        merged.values(),
+        key=lambda paper: (paper["rank"], paper["published_at"], paper["arxiv_id"]),
+    )
+    status = "papers_ready" if papers else "no_results"
+    return {
+        "papers": papers,
+        "search_errors": errors,
+        "status": status,
+        "trace": _append_trace(
+            state,
+            _trace(
+                "search_academic_papers",
+                f"学术检索完成，得到 {len(papers)} 篇去重论文",
+                provider=deps.paper_provider.name,
+                query_count=len(queries),
+                paper_count=len(papers),
+                errors=errors,
+            ),
+        ),
+    }
+
+
 def route_after_analysis(state: ResearchState) -> str:
     return "decompose" if state.get("is_broad") else "finalize"
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    return list(dict.fromkeys(value for value in values if value))
 
 
 def _resolve_selection(

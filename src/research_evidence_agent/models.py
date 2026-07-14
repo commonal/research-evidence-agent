@@ -1,5 +1,8 @@
+"""Public API request and response models."""
+
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -119,11 +122,40 @@ class ResearchTraceResponse(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
+class AcademicSearchPlanResponse(BaseModel):
+    queries: list[str]
+    keywords: list[str]
+
+
+class PaperResponse(BaseModel):
+    arxiv_id: str
+    title: str
+    authors: list[str]
+    abstract: str
+    published_at: datetime
+    updated_at: datetime
+    categories: list[str]
+    abs_url: str
+    pdf_url: str
+    matched_queries: list[str]
+    rank: int
+
+
 class ResearchPlanResponse(BaseModel):
     request_id: str
     thread_id: str
-    status: Literal["analyzing", "awaiting_selection", "ready"]
+    status: Literal[
+        "analyzing",
+        "awaiting_selection",
+        "ready",
+        "searching",
+        "papers_ready",
+        "no_results",
+    ]
     original_question: str
     selected_question: str | None
     subquestions: list[SubQuestionResponse]
+    search_plan: AcademicSearchPlanResponse | None = None
+    papers: list[PaperResponse] = Field(default_factory=list)
+    search_errors: list[str] = Field(default_factory=list)
     trace: list[ResearchTraceResponse]

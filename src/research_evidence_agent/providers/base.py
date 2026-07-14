@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from agentic_search_demo.graph.state import AnswerDraft, Source
+from research_evidence_agent.graph.state import AnswerDraft, Source
 
 
 class SearchProvider(Protocol):

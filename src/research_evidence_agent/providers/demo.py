@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 
-from agentic_search_demo.graph.state import AnswerDraft, Citation, Source
+from research_evidence_agent.graph.state import AnswerDraft, Citation, Source
 
 
 _CORPUS: tuple[dict[str, str], ...] = (

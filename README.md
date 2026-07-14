@@ -17,7 +17,7 @@
 
 项目使用 LangGraph 表达条件分支、补充搜索循环和 `MemorySaver` 线程状态，使用 FastAPI 提供普通 JSON 与 SSE 流式接口。默认 provider 不需要 API Key，可以验证图、接口和状态流转。项目不再导入或动态加载父项目代码。
 
-科研 MVP 将在此基线上实现：宽泛问题拆解、用户选择具体子问题、Arxiv 检索、论文全文证据提取以及可追溯结论生成。详细范围见 [PROJECT_GUIDE.md](PROJECT_GUIDE.md)。
+科研 MVP 已实现“问题收敛 → 学术检索式生成 → arXiv 论文发现”这一段主链路。宽泛问题会通过 LangGraph `interrupt/resume` 等待用户选择；具体问题会生成英文检索式，查询 arXiv，并对论文元数据去重。PDF 全文证据提取与可追溯结论仍属于下一阶段。详细范围见 [PROJECT_GUIDE.md](PROJECT_GUIDE.md)。
 
 ## 快速开始
 
@@ -26,7 +26,7 @@
 ```powershell
 uv sync --dev
 uv run pytest
-uv run uvicorn agentic_search_demo.api:app --app-dir src --reload --port 8010
+uv run uvicorn research_evidence_agent.api:app --app-dir src --reload --port 8010
 ```
 
 打开 `http://127.0.0.1:8010/docs`，或调用：
@@ -53,16 +53,30 @@ Invoke-RestMethod `
 - `POST /api/v1/search`：执行完整图并返回回答、引用、证据质量和节点轨迹。
 - `POST /api/v1/search/stream`：以 SSE 推送节点进度和最终结果。
 - `POST /api/v1/research/plan`：分析研究问题；宽泛问题返回候选子问题并暂停线程。
-- `POST /api/v1/research/{thread_id}/selection`：选择或修改具体子问题，并恢复同一 LangGraph 线程。
+- `POST /api/v1/research/{thread_id}/selection`：选择或修改具体子问题，恢复线程并执行学术检索。
 
-科研规划接口目前完成 MVP 第一阶段。线程恢复后状态为 `ready`，后续提交将在该节点之后接入 Arxiv 检索和 PDF 全文证据提取。
+检索完成后状态为 `papers_ready`，响应包含 `search_plan`、去重后的 `papers` 和可诊断的 `search_errors`。默认使用离线 Demo Provider；启用真实 arXiv 检索时可设置以下环境变量：
+
+```dotenv
+RESEARCH_PAPER_PROVIDER=arxiv
+ACADEMIC_QUERY_PLANNER=demo
+RESEARCH_MAX_RESULTS_PER_QUERY=5
+```
+
+`ACADEMIC_QUERY_PLANNER=openai_compatible` 可使用兼容 OpenAI Chat Completions 的模型生成更好的英文检索式，此时还需配置 `LLM_API_KEY`、`LLM_BASE_URL` 和 `LLM_MODEL`。当前返回的是论文元数据与摘要，不能称为全文证据结论。
+
+也可单独运行真实数据源冒烟验证：
+
+```powershell
+uv run python scripts/smoke_arxiv.py
+```
 
 请求中的 `max_iterations` 表示最多搜索轮数，而不是额外重试次数。证据不足且仍有搜索预算时，图会进入 `rewrite_query`，然后重新搜索；达到上限后会基于已有证据回答并明确证据限制。
 
 ## 项目结构
 
 ```text
-src/agentic_search_demo/
+src/research_evidence_agent/
 ├── api.py                  # FastAPI 应用与 SSE 接口
 ├── config.py               # 环境配置
 ├── models.py               # API 模型
@@ -71,9 +85,15 @@ src/agentic_search_demo/
 │   ├── builder.py          # LangGraph 节点和边
 │   ├── nodes.py            # 搜索 Agent 节点实现
 │   └── state.py            # 结构化 Graph State
-└── providers/
-    ├── base.py             # 可注入协议
-    └── demo.py             # 离线检索和回答
+├── providers/
+│   ├── base.py             # 可注入协议
+│   ├── demo.py             # 离线通用检索和回答
+│   └── arxiv.py            # arXiv Atom API Provider
+└── research/
+    ├── academic.py         # 学术检索式规划与离线论文 Provider
+    ├── builder.py          # 科研 LangGraph 工作流
+    ├── nodes.py            # 问题收敛和论文发现节点
+    └── state.py            # 科研工作流状态
 ```
 
 ## 独立性与来源

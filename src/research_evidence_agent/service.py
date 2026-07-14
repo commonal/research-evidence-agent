@@ -8,10 +8,10 @@ from typing import Any
 
 from langgraph.checkpoint.memory import MemorySaver
 
-from agentic_search_demo.graph.builder import build_graph
-from agentic_search_demo.graph.nodes import AgentDependencies
-from agentic_search_demo.graph.state import SearchState
-from agentic_search_demo.models import SearchMode, SearchRequest, SearchResponse
+from research_evidence_agent.graph.builder import build_graph
+from research_evidence_agent.graph.nodes import AgentDependencies
+from research_evidence_agent.graph.state import SearchState
+from research_evidence_agent.models import SearchMode, SearchRequest, SearchResponse
 
 
 @dataclass(slots=True)

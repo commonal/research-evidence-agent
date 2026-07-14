@@ -1,4 +1,4 @@
-"""LangGraph-powered agentic search demo."""
+"""LangGraph-powered research evidence agent."""
 
 __all__ = ["__version__"]
 

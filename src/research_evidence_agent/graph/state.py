@@ -1,3 +1,5 @@
+"""State types for the baseline search graph."""
+
 from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
