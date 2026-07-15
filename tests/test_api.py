@@ -54,6 +54,7 @@ def test_research_workspace_and_assets_are_served() -> None:
 def test_health_and_search_endpoint() -> None:
     client = TestClient(make_app())
     assert client.get("/health").json()["graph"] == "langgraph"
+    assert client.get("/health").json()["persistence"] == "disabled"
     response = client.post(
         "/api/v1/search",
         json={"query": "LangGraph 的状态图有什么作用？", "mode": "quick"},
@@ -144,4 +145,10 @@ def test_research_selection_validates_thread_and_payload() -> None:
     assert client.post(
         "/api/v1/research/missing/selection", json={}
     ).status_code == 422
+
+
+def test_research_history_requires_database_configuration() -> None:
+    client = TestClient(make_app())
+    assert client.get("/api/v1/research/runs").status_code == 503
+    assert client.get("/api/v1/research/runs/missing").status_code == 503
 

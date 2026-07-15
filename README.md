@@ -15,7 +15,7 @@
                                 校验引用
 ```
 
-项目使用 LangGraph 表达条件分支、补充搜索循环和 `MemorySaver` 线程状态，使用 FastAPI 提供普通 JSON 与 SSE 流式接口。科研工作台已迁移为 React + TypeScript + Vite，生产构建由 FastAPI 直接托管，因此日常运行仍只需启动一个 Uvicorn 服务。默认 provider 不需要 API Key，可以验证图、接口和状态流转。项目不再导入或动态加载父项目代码。
+项目使用 LangGraph 表达条件分支、补充搜索循环和 `MemorySaver` 线程状态，使用 FastAPI 提供普通 JSON 与 SSE 流式接口。科研工作台已迁移为 React + TypeScript + Vite，生产构建由 FastAPI 直接托管，因此日常运行仍只需启动一个 Uvicorn 服务。可选的 PostgreSQL 业务持久化会保存研究任务、节点事件、论文评分和模型用量；不配置数据库时仍可使用原有内存模式。默认 provider 不需要 API Key，可以验证图、接口和状态流转。项目不再导入或动态加载父项目代码。
 
 科研 MVP 已实现“问题收敛 → 学术检索式生成 → arXiv 论文发现”这一段主链路。宽泛问题会通过 LangGraph `interrupt/resume` 等待用户选择；具体问题会生成英文检索式，查询 arXiv，并对论文元数据去重。PDF 全文证据提取与可追溯结论仍属于下一阶段。详细范围见 [PROJECT_GUIDE.md](PROJECT_GUIDE.md)。
 
@@ -66,6 +66,29 @@ npm run build
 
 `npm run build` 会执行 TypeScript 检查，并将生产资源重新生成到 `src/research_evidence_agent/web/`，供 FastAPI 单端口托管。
 
+### PostgreSQL 任务历史
+
+默认不启用数据库。需要保存研究任务时，可以使用本机 PostgreSQL，也可以在安装 Docker 后启动仓库提供的数据库：
+
+```powershell
+docker compose up -d postgres
+```
+
+在 `.env` 中增加：
+
+```dotenv
+DATABASE_URL=postgresql+psycopg://research:research@127.0.0.1:5432/research_evidence
+```
+
+第一次启动前执行迁移，然后重启 FastAPI：
+
+```powershell
+uv run alembic upgrade head
+uv run uvicorn research_evidence_agent.api:app --app-dir src --reload --port 8010 --env-file .env
+```
+
+完成或等待选择的研究任务会幂等写入 `research_runs`、`workflow_events`、`papers`、`run_papers` 和 `llm_calls`。当前保存的是产品历史，不会保存 API Key、Prompt 原文或模型推理内容。此阶段仍使用 `MemorySaver`，所以服务重启后可以查看历史结果，但不能恢复重启前等待选择的 LangGraph 线程。
+
 ## API
 
 - `GET /health`：服务与 provider 状态。
@@ -75,6 +98,8 @@ npm run build
 - `POST /api/v1/research/stream`：以 SSE 推送科研节点的运行、完成、等待以及最终结果。
 - `POST /api/v1/research/{thread_id}/selection`：选择或修改具体子问题，恢复线程并执行学术检索。
 - `POST /api/v1/research/{thread_id}/selection/stream`：以 SSE 恢复宽泛问题对应的研究线程。
+- `GET /api/v1/research/runs`：分页查询已保存的研究任务；未配置数据库时返回 503。
+- `GET /api/v1/research/runs/{run_id}`：读取任务的完整检索式、事件、论文评分和 usage。
 
 检索完成后状态为 `papers_ready`，响应包含 `search_plan`、去重后的 `papers`、可诊断的 `search_errors`，以及模型调用的 `usage` 汇总与明细。每篇论文带有 0～100 的 `relevance_score` 和 `matched_keywords`：当前轻量规则按标题关键词命中 50 分、摘要命中 35 分、多检索式覆盖 15 分进行排序，不额外调用 LLM，也不会自动删除低分论文。该分数只表示本次问题下的相对匹配度，不表示论文质量或证据强度。
 
@@ -109,6 +134,7 @@ src/research_evidence_agent/
 ├── config.py               # 环境配置
 ├── models.py               # API 模型
 ├── service.py              # Graph 调用与流式事件转换
+├── persistence/            # SQLAlchemy 表与任务历史 Repository
 ├── web/                    # Vite 生产构建，由 FastAPI 托管
 ├── graph/
 │   ├── builder.py          # LangGraph 节点和边
@@ -123,6 +149,9 @@ src/research_evidence_agent/
     ├── builder.py          # 科研 LangGraph 工作流
     ├── nodes.py            # 问题收敛和论文发现节点
     └── state.py            # 科研工作流状态
+
+migrations/                 # Alembic 数据库迁移
+compose.yaml                # 本地 PostgreSQL 17
 ```
 
 ## 独立性与来源

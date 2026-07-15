@@ -4,7 +4,7 @@ import os
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,10 +15,12 @@ from research_evidence_agent.models import (
     HealthResponse,
     ResearchPlanRequest,
     ResearchPlanResponse,
+    ResearchRunListResponse,
     ResearchSelectionRequest,
     SearchRequest,
     SearchResponse,
 )
+from research_evidence_agent.persistence import ResearchRunRepository, ResearchRunStore
 from research_evidence_agent.providers.arxiv import ArxivPaperProvider
 from research_evidence_agent.providers.demo import DemoAnswerGenerator, DemoSearchProvider
 from research_evidence_agent.research.academic import (
@@ -63,6 +65,7 @@ def create_service(settings: Settings | None = None) -> SearchService:
 
 def create_research_service(
     settings: Settings | None = None,
+    run_store: ResearchRunStore | None = None,
 ) -> ResearchPlanningService:
     settings = settings or Settings.from_env()
 
@@ -98,13 +101,17 @@ def create_research_service(
             f"{settings.research_paper_provider}"
         )
 
+    if run_store is None and settings.database_url:
+        run_store = ResearchRunRepository.from_url(settings.database_url)
+
     return ResearchPlanningService(
         ResearchDependencies(
             question_planner=DemoQuestionPlanner(),
             academic_query_planner=academic_query_planner,
             paper_provider=paper_provider,
             max_results_per_query=settings.research_max_results_per_query,
-        )
+        ),
+        run_store=run_store,
     )
 
 
@@ -112,9 +119,9 @@ def create_app(
     service: SearchService | None = None,
     research_service: ResearchPlanningService | None = None,
 ) -> FastAPI:
-    service = service or create_service()
-    research_service = research_service or create_research_service()
     settings = Settings.from_env()
+    service = service or create_service(settings)
+    research_service = research_service or create_research_service(settings)
     app = FastAPI(title="Research Evidence Agent", version="0.1.0")
     app.state.search_service = service
     app.state.research_service = research_service
@@ -142,6 +149,11 @@ def create_app(
             graph="langgraph",
             search_provider=service.deps.search_provider.name,
             answer_provider=service.deps.answer_generator.name,
+            persistence=(
+                getattr(research_service.run_store, "backend_name", "enabled")
+                if research_service.run_store is not None
+                else "disabled"
+            ),
         )
 
     @app.post("/api/v1/search", response_model=SearchResponse)
@@ -184,6 +196,38 @@ def create_app(
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    @app.get(
+        "/api/v1/research/runs",
+        response_model=ResearchRunListResponse,
+    )
+    async def list_research_runs(
+        limit: int = Query(default=20, ge=1, le=100),
+        offset: int = Query(default=0, ge=0),
+    ) -> ResearchRunListResponse:
+        store = research_service.run_store
+        if store is None:
+            raise HTTPException(
+                status_code=503,
+                detail="research persistence is disabled; configure DATABASE_URL",
+            )
+        return await store.list(limit=limit, offset=offset)
+
+    @app.get(
+        "/api/v1/research/runs/{run_id}",
+        response_model=ResearchPlanResponse,
+    )
+    async def get_research_run(run_id: str) -> ResearchPlanResponse:
+        store = research_service.run_store
+        if store is None:
+            raise HTTPException(
+                status_code=503,
+                detail="research persistence is disabled; configure DATABASE_URL",
+            )
+        result = await store.get(run_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="research run not found")
+        return result
 
     @app.post(
         "/api/v1/research/{thread_id}/selection",

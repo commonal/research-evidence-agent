@@ -14,6 +14,7 @@ from research_evidence_agent.models import (
     ResearchPlanResponse,
     ResearchSelectionRequest,
 )
+from research_evidence_agent.persistence import ResearchRunStore
 from research_evidence_agent.research.builder import build_research_planning_graph
 from research_evidence_agent.research.nodes import ResearchDependencies
 from research_evidence_agent.research.state import ResearchState
@@ -27,6 +28,7 @@ class ResearchThreadNotFound(LookupError):
 class ResearchPlanningService:
     deps: ResearchDependencies
     checkpointer: Any = field(default=None, repr=False)
+    run_store: ResearchRunStore | None = field(default=None, repr=False)
     graph: Any = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -155,7 +157,7 @@ class ResearchPlanningService:
     async def _response(self, config: dict) -> ResearchPlanResponse:
         snapshot = await self.graph.aget_state(config)
         state: ResearchState = snapshot.values
-        return ResearchPlanResponse(
+        response = ResearchPlanResponse(
             request_id=state["request_id"],
             thread_id=state["thread_id"],
             status=state["status"],
@@ -168,6 +170,9 @@ class ResearchPlanningService:
             search_errors=state.get("search_errors", []),
             trace=state.get("trace", []),
         )
+        if self.run_store is not None:
+            await self.run_store.save(response)
+        return response
 
     @staticmethod
     def _config(thread_id: str) -> dict:

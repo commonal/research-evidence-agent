@@ -19,6 +19,7 @@ class Settings:
     llm_api_key: str = ""
     llm_base_url: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-4o-mini"
+    database_url: str = ""
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -52,6 +53,7 @@ class Settings:
                 "LLM_BASE_URL", "https://api.openai.com/v1"
             ).strip(),
             llm_model=os.getenv("LLM_MODEL", "gpt-4o-mini").strip(),
+            database_url=os.getenv("DATABASE_URL", "").strip(),
         )
 
 

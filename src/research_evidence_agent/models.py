@@ -78,6 +78,7 @@ class HealthResponse(BaseModel):
     graph: str
     search_provider: str
     answer_provider: str
+    persistence: str = "disabled"
 
 
 class ResearchPlanRequest(BaseModel):
@@ -184,3 +185,23 @@ class ResearchPlanResponse(BaseModel):
     papers: list[PaperResponse] = Field(default_factory=list)
     search_errors: list[str] = Field(default_factory=list)
     trace: list[ResearchTraceResponse]
+
+
+class ResearchRunSummaryResponse(BaseModel):
+    run_id: str
+    thread_id: str
+    status: str
+    original_question: str
+    selected_question: str | None
+    paper_count: int = 0
+    top_relevance_score: int | None = None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None
+
+
+class ResearchRunListResponse(BaseModel):
+    items: list[ResearchRunSummaryResponse]
+    total: int
+    limit: int
+    offset: int
