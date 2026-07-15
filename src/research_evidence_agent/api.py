@@ -39,6 +39,7 @@ from research_evidence_agent.service import SearchService, sse_frame
 
 
 WEB_DIR = Path(__file__).parent / "web"
+WEB_ASSETS_DIR = WEB_DIR / "assets"
 
 
 def create_service(settings: Settings | None = None) -> SearchService:
@@ -118,7 +119,7 @@ def create_app(
     app.state.search_service = service
     app.state.research_service = research_service
     app.state.settings = settings
-    app.mount("/assets", StaticFiles(directory=WEB_DIR), name="assets")
+    app.mount("/assets", StaticFiles(directory=WEB_ASSETS_DIR), name="assets")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=os.getenv("CORS_ALLOW_ORIGINS", "*").split(","),

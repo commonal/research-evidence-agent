@@ -95,7 +95,7 @@ grade_evidence
 - 引用 URL、source ID 和原文 quote 一致性校验；
 - 错误引用过滤和基础答案修复；
 - FastAPI JSON 接口、SSE 进度接口和健康检查；
-- FastAPI 内置科研工作台，可输入问题、选择子问题、观察节点进度并查看论文；
+- React + TypeScript + Vite 科研工作台，可输入问题、选择子问题、观察节点进度并查看论文；
 - DeepSeek 生成 arXiv 检索式，并记录输入、输出、缓存和推理 Token；
 - 真实 arXiv 元数据检索、跨检索式去重和部分失败保留；
 - 宽泛问题通过 LangGraph `interrupt/resume` 暂停并恢复同一线程；
@@ -108,7 +108,7 @@ grade_evidence
 
 以下能力尚未完整实现，不能作为当前成果直接宣称：
 
-- 当前 Web 前端是 FastAPI 托管的原生 HTML/CSS/JavaScript 产品原型，尚未迁移到目标 React 技术栈；
+- 当前 React 前端仍使用进程内任务状态和 POST-SSE，刷新页面后不能恢复运行历史；
 - 通用搜索基线仍以 Demo Provider 为主，真实能力目前集中在科研问题规划、DeepSeek 和 arXiv 链路；
 - 尚未抓取搜索结果对应网页的完整正文；
 - 证据评分是启发式规则，不是语义事实核验；
@@ -951,7 +951,7 @@ verify_output
 END
 ```
 
-当前实现进度（2026-07-15）：已完成到 `build_search_queries` 和 arXiv 论文元数据检索，并实现跨检索式去重、匹配检索式合并及部分查询失败保留。FastAPI 已内置科研工作台，通过 SSE 显示节点运行状态、宽泛问题选择、检索式、论文结果及 LLM token/缓存 usage。接口状态以 `papers_ready` 或 `no_results` 结束。`select_papers` 及其后的 PDF 全文证据链路尚未实现，因此当前输出只能视为摘要级候选论文集。
+当前实现进度（2026-07-15）：已完成到 `build_search_queries` 和 arXiv 论文元数据检索，并实现跨检索式去重、匹配检索式合并及部分查询失败保留。React 工作台通过 SSE 显示节点运行状态、宽泛问题选择、检索式、论文结果及 LLM token/缓存 usage；Vite 生产构建由 FastAPI 直接托管。接口状态以 `papers_ready` 或 `no_results` 结束。`select_papers` 及其后的 PDF 全文证据链路尚未实现，因此当前输出只能视为摘要级候选论文集。
 
 #### 第一版明确不实现
 
@@ -968,15 +968,15 @@ END
 
 ## 16. 已确定的产品技术架构
 
-本节记录 2026-07-15 确定的目标技术架构。当前原生 Web 工作台属于交互原型，目标架构用于指导后续 React 迁移、PostgreSQL 持久化和 PDF 证据链路建设。新增组件必须解决已经出现的产品问题，不能为了丰富简历而无条件堆叠中间件。
+本节记录 2026-07-15 确定的目标技术架构。React 前端工程化已经完成，后续按本架构推进 PostgreSQL 持久化和 PDF 证据链路建设。新增组件必须解决已经出现的产品问题，不能为了丰富简历而无条件堆叠中间件。
 
 ### 16.1 技术选型总表
 
 | 层级 | 目标技术 | 引入阶段 | 决策说明 |
 |---|---|---|---|
-| Web 前端 | React + TypeScript + Vite | 下一次前端工程化迭代 | 科研工作台是 SPA，不需要 Next.js 的 SSR 和第二套服务端路由 |
-| 前端状态 | React `useReducer` + 自定义 Hooks | 前端迁移 | 服务端工作流是事实来源，第一版不引入 Redux 或 Zustand |
-| 前端样式 | 复用现有设计变量和组件 CSS | 前端迁移 | 保留当前视觉，避免迁移同时重做 UI |
+| Web 前端 | React + TypeScript + Vite | 已实现 | 科研工作台是 SPA，不需要 Next.js 的 SSR 和第二套服务端路由 |
+| 前端状态 | React `useReducer` + 自定义 Hooks | 已实现 | 服务端工作流是事实来源，第一版不引入 Redux 或 Zustand |
+| 前端样式 | 复用现有设计变量和组件 CSS | 已实现 | 保留现有视觉和响应式布局 |
 | 后端 API | FastAPI + Pydantic | 已实现并长期保留 | 负责协议、校验、鉴权、SSE 适配和依赖装配 |
 | Agent 编排 | LangGraph | 已实现并长期保留 | 负责条件分支、中断恢复、研究循环和节点状态 |
 | 实时通信 | REST + SSE | 已实现并长期保留 | 研究过程以服务端事件为主，不需要 WebSocket 双向常连接 |
@@ -1022,7 +1022,7 @@ flowchart LR
 
 ### 16.3 前端目标设计
 
-目标前端在仓库根目录使用独立 `frontend/` 工程，通过 Vite 构建 React SPA。开发环境使用 Vite 代理 `/api` 到 FastAPI 的 `8010` 端口；生产构建生成静态资源，可以由 Nginx/CDN 托管，也可以在单机演示部署中继续由 FastAPI 托管。
+前端在仓库根目录使用独立 `frontend/` 工程，通过 Vite 构建 React SPA。开发环境使用 Vite 代理 `/api`、`/health`、`/docs` 和 `/openapi.json` 到 FastAPI 的 `8010` 端口；生产构建生成到 Python 包内的 `web/` 目录，单机演示继续由 FastAPI 托管，未来也可以改由 Nginx/CDN 托管。
 
 首批组件边界确定为：
 
@@ -1056,7 +1056,7 @@ RunHistory（PostgreSQL 阶段）
 - 表单、展开项和当前选择属于本地 UI 状态，第一版使用 `useReducer` 和自定义 Hooks；
 - SSE 连接使用 `AbortController` 支持取消，断线后根据 `run_id` 重新读取任务状态；
 - 前端不保存 API Key，所有模型密钥仅存在于 FastAPI 服务端环境变量；
-- 当前 `web/` 原生页面作为迁移视觉稿，React 达到功能一致后再删除，不能长期维护两套前端逻辑。
+- `frontend/src/` 是唯一的前端源码，`web/` 只保存 Vite 构建产物，不再维护第二套原生页面逻辑。
 
 ### 16.4 后端分层与目标 API
 
@@ -1104,7 +1104,7 @@ GET /api/v1/research/runs
   分页查询历史任务
 ```
 
-迁移期间保留当前 POST-SSE 接口，直到 React 前端完成新 API 切换。目标 SSE 事件使用统一外壳：
+持久化改造期间保留当前 POST-SSE 接口；引入运行历史 API 后再切换为可恢复的 GET 事件流。目标 SSE 事件使用统一外壳：
 
 ```json
 {
@@ -1265,14 +1265,14 @@ error_type
 
 ### 16.10 实施顺序与验收标准
 
-#### A. React 前端工程化
+#### A. React 前端工程化（已完成，2026-07-15）
 
 - 创建 `frontend/` React + TypeScript + Vite 工程；
 - 迁移当前输入、流程时间线、问题选择、Usage、检索式和论文列表；
 - 封装 REST 客户端与 SSE Hook，使用 Vite Proxy 联调；
-- 保持当前 API 和页面能力一致，再删除原生 `web/` 实现。
+- 保持当前 API 和页面能力一致，删除原生页面逻辑，仅保留 Vite 构建产物。
 
-验收：具体问题和宽泛问题都能完成全流程；节点状态、论文和 Token 数据不低于当前原型；前端单元测试和构建通过。
+验收结果：具体问题和宽泛问题继续使用原有 SSE 全流程；节点状态、论文和 Token 数据能力保持一致；前端 Vitest、TypeScript 检查、Vite 构建和 FastAPI 回归测试通过。
 
 #### B. PostgreSQL 业务持久化
 

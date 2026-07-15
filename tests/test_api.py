@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from fastapi.testclient import TestClient
 
@@ -41,9 +42,13 @@ def test_research_workspace_and_assets_are_served() -> None:
     page = client.get("/")
     assert page.status_code == 200
     assert "Research Evidence Agent" in page.text
-    assert 'id="workflow-timeline"' in page.text
-    assert client.get("/assets/app.css").status_code == 200
-    assert client.get("/assets/app.js").status_code == 200
+    assert 'id="root"' in page.text
+
+    asset_paths = re.findall(r'(?:src|href)="(/assets/[^"]+)"', page.text)
+    assert any(path.endswith(".css") for path in asset_paths)
+    assert any(path.endswith(".js") for path in asset_paths)
+    for path in asset_paths:
+        assert client.get(path).status_code == 200
 
 
 def test_health_and_search_endpoint() -> None:
