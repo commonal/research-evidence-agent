@@ -9,7 +9,7 @@ from research_evidence_agent.research.academic import (
     DemoAcademicQueryPlanner,
     DemoPaperProvider,
 )
-from research_evidence_agent.research.nodes import ResearchDependencies
+from research_evidence_agent.research.nodes import ResearchDependencies, select_papers
 from research_evidence_agent.research.planner import DemoQuestionPlanner
 from research_evidence_agent.research.service import (
     ResearchPlanningService,
@@ -46,12 +46,68 @@ def test_focused_question_searches_papers_without_interrupt() -> None:
         len(paper.matched_queries) == len(result.search_plan.queries)
         for paper in result.papers
     )
+    assert [paper.relevance_score for paper in result.papers] == sorted(
+        [paper.relevance_score for paper in result.papers], reverse=True
+    )
+    assert all(0 <= paper.relevance_score <= 100 for paper in result.papers)
+    assert result.papers[0].matched_keywords
     assert [event.node for event in result.trace] == [
         "analyze_question",
         "finalize_question",
         "build_search_queries",
         "search_academic_papers",
+        "select_papers",
     ]
+
+
+def test_simple_relevance_score_uses_word_boundaries_and_query_coverage() -> None:
+    def paper(arxiv_id: str, title: str, abstract: str, rank: int) -> dict:
+        return {
+            "arxiv_id": arxiv_id,
+            "title": title,
+            "authors": ["Researcher"],
+            "abstract": abstract,
+            "published_at": "2024-01-01T00:00:00+00:00",
+            "updated_at": "2024-01-01T00:00:00+00:00",
+            "categories": ["cs.CL"],
+            "abs_url": f"https://arxiv.org/abs/{arxiv_id}",
+            "pdf_url": f"https://arxiv.org/pdf/{arxiv_id}",
+            "matched_queries": ['all:"RAG"'],
+            "rank": rank,
+        }
+
+    result = select_papers(
+        {
+            "search_plan": {
+                "queries": ['all:"RAG"', 'all:"retrieval augmented generation"'],
+                "keywords": ["RAG"],
+            },
+            "papers": [
+                paper(
+                    "2401.00001",
+                    "Storage Systems for Language Models",
+                    "We study storage efficiency.",
+                    1,
+                ),
+                paper(
+                    "2402.00002",
+                    "RAG for Question Answering",
+                    "RAG improves grounded generation.",
+                    2,
+                ),
+            ],
+            "trace": [],
+        }
+    )
+
+    assert [item["arxiv_id"] for item in result["papers"]] == [
+        "2402.00002",
+        "2401.00001",
+    ]
+    assert result["papers"][0]["relevance_score"] == 93
+    assert result["papers"][0]["matched_keywords"] == ["RAG"]
+    assert result["papers"][1]["relevance_score"] == 8
+    assert result["papers"][1]["matched_keywords"] == []
 
 
 def test_broad_question_pauses_and_resumes_with_option() -> None:

@@ -7,7 +7,7 @@ export function PaperList({ papers }: { papers: Paper[] }) {
         <div><span className="section-index">04</span><h2>候选论文</h2></div>
         <span className="micro-label">{papers.length} 篇</span>
       </div>
-      <p className="section-copy">当前为摘要级候选集，尚未经过全文证据提取与语义重排。</p>
+      <p className="section-copy">匹配分基于标题、摘要关键词和多检索式命中，仅用于本次候选集排序。</p>
       <div className="paper-list">
         {papers.length ? papers.map((paper, index) => (
           <PaperCard key={paper.arxiv_id} paper={paper} index={index} />
@@ -23,7 +23,10 @@ function PaperCard({ paper, index }: { paper: Paper; index: number }) {
   return (
     <article className="paper-card">
       <div className="paper-topline">
-        <span className="paper-rank">#{String(index + 1).padStart(2, "0")}</span>
+        <div className="paper-scoreline">
+          <span className="paper-rank">#{String(index + 1).padStart(2, "0")}</span>
+          <span className="relevance-score">匹配分 {paper.relevance_score}</span>
+        </div>
         <span className="paper-meta">arXiv:{paper.arxiv_id} · {formatDate(paper.published_at)}</span>
       </div>
       <h3><a href={safeUrl(paper.abs_url)} target="_blank" rel="noreferrer">{paper.title}</a></h3>
@@ -31,6 +34,9 @@ function PaperCard({ paper, index }: { paper: Paper; index: number }) {
       <div className="paper-categories">
         {paper.categories.map((category) => <span className="paper-category" key={category}>{category}</span>)}
       </div>
+      {paper.matched_keywords.length > 0 && (
+        <p className="matched-keywords">命中：{paper.matched_keywords.join(" · ")}</p>
+      )}
       <details><summary>查看摘要</summary><p>{paper.abstract}</p></details>
     </article>
   );

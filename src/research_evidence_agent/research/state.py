@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 
 
 ResearchStatus = Literal[
@@ -60,6 +60,8 @@ class Paper(TypedDict):
     pdf_url: str
     matched_queries: list[str]
     rank: int
+    relevance_score: NotRequired[int]
+    matched_keywords: NotRequired[list[str]]
 
 
 class ResearchState(TypedDict, total=False):

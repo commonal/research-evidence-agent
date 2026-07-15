@@ -8,6 +8,7 @@ const steps: Record<WorkflowNode, { title: string; description: string; conditio
   finalize_question: { title: "确认研究问题", description: "锁定本次检索的研究边界" },
   build_search_queries: { title: "生成检索式", description: "调用 LLM 生成英文 arXiv 查询" },
   search_academic_papers: { title: "检索论文", description: "查询 arXiv、合并结果并去重" },
+  select_papers: { title: "相关性评分", description: "按标题、摘要和检索命中计算匹配分" },
 };
 
 const stateLabels = {

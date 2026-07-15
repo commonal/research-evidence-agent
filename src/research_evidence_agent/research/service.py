@@ -190,6 +190,7 @@ _RUNNING_MESSAGES = {
     "finalize_question": "正在确认最终研究问题",
     "build_search_queries": "正在调用模型生成学术检索式",
     "search_academic_papers": "正在检索并合并 arXiv 论文",
+    "select_papers": "正在计算论文与研究问题的相关性匹配分",
 }
 
 
@@ -210,6 +211,7 @@ def _next_node(node: str, state: ResearchState) -> str | None:
         "wait_for_user_selection": "finalize_question",
         "finalize_question": "build_search_queries",
         "build_search_queries": "search_academic_papers",
+        "search_academic_papers": "select_papers",
     }.get(node)
 
 

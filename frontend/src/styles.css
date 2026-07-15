@@ -693,6 +693,21 @@ a {
   font: 700 12px/1 Georgia, serif;
 }
 
+.paper-scoreline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.relevance-score {
+  padding: 4px 7px;
+  border-radius: 999px;
+  color: var(--teal-dark);
+  background: var(--teal-pale);
+  font-size: 10px;
+  font-weight: 800;
+}
+
 .paper-card h3 {
   margin: 7px 0 8px;
   font: 650 16px/1.45 Georgia, "Noto Serif SC", serif;
@@ -718,6 +733,13 @@ a {
   gap: 5px;
   flex-wrap: wrap;
   margin: 11px 0;
+}
+
+.matched-keywords {
+  margin: -2px 0 2px;
+  color: var(--teal-dark);
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .paper-card details {

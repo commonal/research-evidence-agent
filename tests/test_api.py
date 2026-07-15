@@ -102,6 +102,8 @@ def test_research_question_planning_and_selection() -> None:
     assert selected["selected_question"] == plan["subquestions"][0]["question"]
     assert selected["search_plan"]["queries"]
     assert selected["papers"]
+    assert 0 <= selected["papers"][0]["relevance_score"] <= 100
+    assert "matched_keywords" in selected["papers"][0]
 
 
 def test_research_stream_reports_progress_and_resumes_selection() -> None:
@@ -128,6 +130,10 @@ def test_research_stream_reports_progress_and_resumes_selection() -> None:
     ][-1]
     assert selection_result["status"] == "papers_ready"
     assert selection_result["papers"]
+    assert any(
+        event["node"] == "select_papers" and event["state"] == "running"
+        for event in [data for name, data in selection_events if name == "progress"]
+    )
 
 
 def test_research_selection_validates_thread_and_payload() -> None:

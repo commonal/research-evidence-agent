@@ -12,7 +12,8 @@ export type WorkflowNode =
   | "wait_for_user_selection"
   | "finalize_question"
   | "build_search_queries"
-  | "search_academic_papers";
+  | "search_academic_papers"
+  | "select_papers";
 
 export type NodeState = "pending" | "running" | "completed" | "waiting" | "skipped" | "error";
 
@@ -46,6 +47,8 @@ export interface Paper {
   pdf_url: string;
   matched_queries: string[];
   rank: number;
+  relevance_score: number;
+  matched_keywords: string[];
 }
 
 export interface LLMUsageCall {

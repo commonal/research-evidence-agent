@@ -76,7 +76,9 @@ npm run build
 - `POST /api/v1/research/{thread_id}/selection`：选择或修改具体子问题，恢复线程并执行学术检索。
 - `POST /api/v1/research/{thread_id}/selection/stream`：以 SSE 恢复宽泛问题对应的研究线程。
 
-检索完成后状态为 `papers_ready`，响应包含 `search_plan`、去重后的 `papers`、可诊断的 `search_errors`，以及模型调用的 `usage` 汇总与明细。DeepSeek usage 包括输入、输出、总 token、Prompt 缓存命中/未命中和推理 token。默认使用离线 Demo Provider；启用真实 arXiv 检索时可设置以下环境变量：
+检索完成后状态为 `papers_ready`，响应包含 `search_plan`、去重后的 `papers`、可诊断的 `search_errors`，以及模型调用的 `usage` 汇总与明细。每篇论文带有 0～100 的 `relevance_score` 和 `matched_keywords`：当前轻量规则按标题关键词命中 50 分、摘要命中 35 分、多检索式覆盖 15 分进行排序，不额外调用 LLM，也不会自动删除低分论文。该分数只表示本次问题下的相对匹配度，不表示论文质量或证据强度。
+
+DeepSeek usage 包括输入、输出、总 token、Prompt 缓存命中/未命中和推理 token。默认使用离线 Demo Provider；启用真实 arXiv 检索时可设置以下环境变量：
 
 ```dotenv
 RESEARCH_PAPER_PROVIDER=arxiv

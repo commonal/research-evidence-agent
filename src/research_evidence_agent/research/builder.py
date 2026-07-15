@@ -10,6 +10,7 @@ from research_evidence_agent.research.nodes import (
     build_search_queries,
     route_after_analysis,
     search_academic_papers,
+    select_papers,
     wait_for_user_selection,
 )
 from research_evidence_agent.research.state import ResearchState
@@ -28,6 +29,9 @@ def build_research_planning_graph(deps: ResearchDependencies, *, checkpointer=No
     async def paper_node(state: ResearchState) -> dict:
         return await search_academic_papers(state, deps)
 
+    def select_node(state: ResearchState) -> dict:
+        return select_papers(state)
+
     workflow = StateGraph(ResearchState)
     workflow.add_node("analyze_question", analyze_node)
     workflow.add_node("generate_subquestions", decompose_node)
@@ -35,6 +39,7 @@ def build_research_planning_graph(deps: ResearchDependencies, *, checkpointer=No
     workflow.add_node("finalize_question", finalize_question)
     workflow.add_node("build_search_queries", query_node)
     workflow.add_node("search_academic_papers", paper_node)
+    workflow.add_node("select_papers", select_node)
 
     workflow.set_entry_point("analyze_question")
     workflow.add_conditional_edges(
@@ -46,5 +51,6 @@ def build_research_planning_graph(deps: ResearchDependencies, *, checkpointer=No
     workflow.add_edge("wait_for_user_selection", "finalize_question")
     workflow.add_edge("finalize_question", "build_search_queries")
     workflow.add_edge("build_search_queries", "search_academic_papers")
-    workflow.add_edge("search_academic_papers", END)
+    workflow.add_edge("search_academic_papers", "select_papers")
+    workflow.add_edge("select_papers", END)
     return workflow.compile(checkpointer=checkpointer)

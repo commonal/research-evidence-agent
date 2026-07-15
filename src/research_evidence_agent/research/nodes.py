@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from langgraph.types import interrupt
@@ -124,7 +125,11 @@ async def build_search_queries(
 ) -> dict:
     selected = state["selected_question"]
     plan = await deps.academic_query_planner.plan(selected)
-    queries = [" ".join(query.split()) for query in plan.get("queries", []) if query.strip()]
+    queries = [
+        " ".join(query.split())
+        for query in plan.get("queries", [])
+        if query.strip()
+    ]
     if not queries:
         raise ValueError("academic query planner returned no queries")
     usage = plan.get("usage")
@@ -177,11 +182,10 @@ async def search_academic_papers(
         merged.values(),
         key=lambda paper: (paper["rank"], paper["published_at"], paper["arxiv_id"]),
     )
-    status = "papers_ready" if papers else "no_results"
     return {
         "papers": papers,
         "search_errors": errors,
-        "status": status,
+        "status": "searching",
         "trace": _append_trace(
             state,
             _trace(
@@ -196,12 +200,103 @@ async def search_academic_papers(
     }
 
 
+def select_papers(state: ResearchState) -> dict:
+    """Score and reorder papers without dropping recall candidates."""
+
+    search_plan = state.get("search_plan", {"queries": [], "keywords": []})
+    terms = _score_terms(
+        search_plan.get("keywords", []),
+        search_plan.get("queries", []),
+    )
+    query_count = max(1, len(search_plan.get("queries", [])))
+    scored: list[Paper] = []
+
+    for paper in state.get("papers", []):
+        normalized_title = _normalize_match_text(paper["title"])
+        normalized_abstract = _normalize_match_text(paper["abstract"])
+        title_hits = [term for term in terms if _matches(normalized_title, term)]
+        abstract_hits = [term for term in terms if _matches(normalized_abstract, term)]
+        matched_keywords = _dedupe([*title_hits, *abstract_hits])
+        term_count = max(1, len(terms))
+        query_coverage = min(
+            1.0,
+            len(_dedupe(paper.get("matched_queries", []))) / query_count,
+        )
+        relevance_score = min(
+            100,
+            int(
+                50 * len(title_hits) / term_count
+                + 35 * len(abstract_hits) / term_count
+                + 15 * query_coverage
+                + 0.5
+            ),
+        )
+        scored.append(
+            Paper(
+                **paper,
+                relevance_score=relevance_score,
+                matched_keywords=matched_keywords,
+            )
+        )
+
+    scored.sort(
+        key=lambda paper: (
+            -paper.get("relevance_score", 0),
+            paper["rank"],
+            paper["arxiv_id"],
+        )
+    )
+    status = "papers_ready" if scored else "no_results"
+    return {
+        "papers": scored,
+        "status": status,
+        "trace": _append_trace(
+            state,
+            _trace(
+                "select_papers",
+                f"已对 {len(scored)} 篇论文完成轻量相关性评分",
+                paper_count=len(scored),
+                score_terms=terms,
+                top_score=scored[0]["relevance_score"] if scored else 0,
+                scoring_method="title_50+abstract_35+query_coverage_15",
+            ),
+        ),
+    }
+
+
 def route_after_analysis(state: ResearchState) -> str:
     return "decompose" if state.get("is_broad") else "finalize"
 
 
 def _dedupe(values: list[str]) -> list[str]:
     return list(dict.fromkeys(value for value in values if value))
+
+
+def _score_terms(keywords: list[str], queries: list[str]) -> list[str]:
+    terms = _dedupe([" ".join(str(value).split()) for value in keywords])
+    if not terms:
+        terms = _dedupe(
+            [
+                match.strip()
+                for query in queries
+                for match in re.findall(r'"([^"]+)"', query)
+            ]
+        )
+    return terms
+
+
+def _normalize_match_text(value: str) -> str:
+    normalized = re.sub(r"[^\w]+", " ", value.casefold()).replace("_", " ")
+    return " ".join(normalized.split())
+
+
+def _matches(normalized_text: str, term: str) -> bool:
+    normalized_term = _normalize_match_text(term)
+    if not normalized_term:
+        return False
+    if normalized_term.isascii():
+        return f" {normalized_term} " in f" {normalized_text} "
+    return normalized_term in normalized_text
 
 
 def _resolve_selection(

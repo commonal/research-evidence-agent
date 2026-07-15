@@ -28,6 +28,7 @@ function makeResult(overrides: Partial<ResearchResult> = {}): ResearchResult {
       { node: "finalize_question", message: "已确认", details: {} },
       { node: "build_search_queries", message: "已规划", details: {} },
       { node: "search_academic_papers", message: "已检索", details: {} },
+      { node: "select_papers", message: "已评分", details: {} },
     ],
     ...overrides,
   };
@@ -49,6 +50,7 @@ describe("researchReducer", () => {
     expect(completed.nodeStates.generate_subquestions).toBe("skipped");
     expect(completed.nodeStates.wait_for_user_selection).toBe("skipped");
     expect(completed.nodeStates.search_academic_papers).toBe("completed");
+    expect(completed.nodeStates.select_papers).toBe("completed");
     expect(completed.usage.total_tokens).toBe(15);
   });
 

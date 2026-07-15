@@ -904,7 +904,7 @@ search_arxiv
   检索候选论文，保存元数据、版本并去重
 
 select_papers
-  评估相关性，过滤明显无关论文并限制全文解析数量
+  根据标题、摘要和检索命中计算轻量相关性分数并重新排序
 
 fetch_and_parse_papers
   下载 PDF、提取正文并保留引用位置，记录解析失败
@@ -951,7 +951,9 @@ verify_output
 END
 ```
 
-当前实现进度（2026-07-15）：已完成到 `build_search_queries` 和 arXiv 论文元数据检索，并实现跨检索式去重、匹配检索式合并及部分查询失败保留。React 工作台通过 SSE 显示节点运行状态、宽泛问题选择、检索式、论文结果及 LLM token/缓存 usage；Vite 生产构建由 FastAPI 直接托管。接口状态以 `papers_ready` 或 `no_results` 结束。`select_papers` 及其后的 PDF 全文证据链路尚未实现，因此当前输出只能视为摘要级候选论文集。
+当前实现进度（2026-07-15）：已完成到 `select_papers` 摘要级轻量评分。arXiv 检索支持跨检索式去重、匹配检索式合并及部分查询失败保留；`select_papers` 使用标题关键词命中 50 分、摘要命中 35 分、多检索式覆盖 15 分，生成 0～100 的 `relevance_score` 并重新排序。该节点不额外调用 LLM，也暂不自动删除低分论文。React 工作台通过 SSE 显示节点状态、宽泛问题选择、检索式、匹配分、论文结果及 LLM token/缓存 usage；Vite 生产构建由 FastAPI 直接托管。接口状态以 `papers_ready` 或 `no_results` 结束。PDF 全文证据链路尚未实现，因此当前输出仍只能视为摘要级候选论文集。
+
+轻量匹配分只用于同一次研究问题下的候选排序，不代表论文质量、实验可信度或证据强度。后续只有在标注集评测证明简单规则不足时，才引入 Embedding、Reranker 或 LLM 评分。
 
 #### 第一版明确不实现
 
@@ -983,7 +985,7 @@ END
 | 业务数据库 | PostgreSQL | React 迁移后 | 保存研究任务、检索式、论文、事件和模型调用 |
 | 数据访问 | SQLAlchemy 2 + Alembic + psycopg 3 | PostgreSQL 阶段 | ORM、迁移和 LangGraph PostgreSQL 组件统一使用 psycopg 驱动 |
 | Graph 持久化 | `langgraph-checkpoint-postgres` | PostgreSQL 阶段 | 替换只适用于单进程开发的 `MemorySaver` |
-| 向量检索 | PostgreSQL + pgvector | `select_papers` 阶段 | 用于问题与论文摘要/段落的语义检索，不提前引入独立向量库 |
+| 向量检索 | PostgreSQL + pgvector | 轻量评分评测不足后 | 用于问题与论文摘要/段落的语义检索，不替代当前可解释规则，也不提前引入独立向量库 |
 | 任务队列 | Redis + Celery | PDF 全文阶段 | 承担 PDF 下载、解析、向量化和失败重试等长任务 |
 | 文件存储 | 开发环境本地目录，生产环境 MinIO/S3 | PDF 全文阶段 | PDF 和解析产物不写入 PostgreSQL 大字段 |
 | 本地部署 | Docker Compose | PostgreSQL 阶段 | 固化前端、API、数据库及后续 Worker 的启动方式 |
@@ -1005,7 +1007,7 @@ flowchart LR
     Repo --> PG["PostgreSQL"]
     Graph --> Checkpoint["Postgres Checkpointer"]
     Checkpoint --> PG
-    PG -. "select_papers 阶段" .-> Vector["pgvector"]
+    PG -. "语义筛选升级" .-> Vector["pgvector"]
     Graph -. "PDF 阶段" .-> Queue["Redis + Celery"]
     Queue -.-> Object["MinIO / S3"]
 ```
@@ -1156,7 +1158,7 @@ PDF 阶段再增加：
 
 ### 16.6 pgvector 使用边界
 
-pgvector 在 `select_papers` 和全文证据检索阶段启用，不参与当前 arXiv 元数据抓取。第一阶段向量对象为研究问题和论文摘要，后续扩展到论文段落。
+当前 `select_papers` 只使用可解释的标题、摘要和检索覆盖规则，不引入 pgvector。只有离线标注集证明轻量评分不能满足排序质量时，才在摘要语义筛选和全文证据检索阶段启用 pgvector。第一批向量对象为研究问题和论文摘要，后续扩展到论文段落。
 
 目标检索采用混合策略：
 
@@ -1294,7 +1296,8 @@ error_type
 
 #### D. 论文筛选与全文基础设施
 
-- 先实现摘要相关性筛选并启用 pgvector；
+- 已实现不额外调用模型的摘要级轻量相关性评分与排序；
+- 建立小型标注集评测排序效果，确有需要时再启用 pgvector 或 Reranker；
 - 再引入 Redis、Celery 和对象存储；
 - 完成 PDF 下载、解析、分段和失败重试；
 - 最后接入证据提取与结论生成。

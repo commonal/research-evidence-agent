@@ -13,6 +13,7 @@ export const workflowNodes: WorkflowNode[] = [
   "finalize_question",
   "build_search_queries",
   "search_academic_papers",
+  "select_papers",
 ];
 
 export const emptyUsage: LLMUsageSummary = {

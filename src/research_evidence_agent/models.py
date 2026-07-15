@@ -161,6 +161,8 @@ class PaperResponse(BaseModel):
     pdf_url: str
     matched_queries: list[str]
     rank: int
+    relevance_score: int = Field(ge=0, le=100)
+    matched_keywords: list[str] = Field(default_factory=list)
 
 
 class ResearchPlanResponse(BaseModel):
