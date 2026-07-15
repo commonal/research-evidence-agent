@@ -95,8 +95,12 @@ grade_evidence
 - 引用 URL、source ID 和原文 quote 一致性校验；
 - 错误引用过滤和基础答案修复；
 - FastAPI JSON 接口、SSE 进度接口和健康检查；
+- FastAPI 内置科研工作台，可输入问题、选择子问题、观察节点进度并查看论文；
+- DeepSeek 生成 arXiv 检索式，并记录输入、输出、缓存和推理 Token；
+- 真实 arXiv 元数据检索、跨检索式去重和部分失败保留；
+- 宽泛问题通过 LangGraph `interrupt/resume` 暂停并恢复同一线程；
 - 无需 API Key 的离线搜索与回答 Provider；
-- 适配父项目 Tavily 和 LLM 调用层的 Legacy Provider；
+- Provider 协议已与父项目解耦，可分别注入问题规划、论文检索和模型适配；
 - `MemorySaver` 和 `thread_id` 检查点基础；
 - 图流程、循环预算、伪造引用和 API 的自动化测试。
 
@@ -104,12 +108,12 @@ grade_evidence
 
 以下能力尚未完整实现，不能作为当前成果直接宣称：
 
-- 没有真正的 Web 前端，FastAPI 是后端接口；
-- Legacy Provider 仍依赖父项目，真实模式尚未完全独立；
+- 当前 Web 前端是 FastAPI 托管的原生 HTML/CSS/JavaScript 产品原型，尚未迁移到目标 React 技术栈；
+- 通用搜索基线仍以 Demo Provider 为主，真实能力目前集中在科研问题规划、DeepSeek 和 arXiv 链路；
 - 尚未抓取搜索结果对应网页的完整正文；
 - 证据评分是启发式规则，不是语义事实核验；
 - 引用校验能防止伪造 URL，但不能证明引用支持答案中的每项结论；
-- `MemorySaver` 尚未形成可被用户操作的中断恢复和历史会话功能；
+- `MemorySaver` 已支持当前进程内的中断恢复，但服务重启后线程丢失，也没有历史任务查询；
 - SSE 当前主要推送节点进度，不是 LLM Token 流；
 - 尚未接入 MCP ToolNode、Dify、Postgres Checkpointer 和自动化评测平台；
 - 尚未具备完整的鉴权、限流、任务取消、超时重试和监控告警。
@@ -466,13 +470,13 @@ LangGraph 搜索并收集证据
 - 工具调用可追踪、可限权、可超时；
 - 同一线程的追问能复用已有证据而不重复完成全部搜索。
 
-### 阶段四：前端、Dify 与自动化评测
+### 阶段四：前端工程化、Dify 与自动化评测
 
 目标：形成适合展示、评估和持续优化的完整项目。
 
 任务：
 
-- 增加可视化 Web 前端；
+- 将现有可视化原型迁移为 React + TypeScript + Vite 前端；
 - 展示研究计划、搜索来源、补搜原因、节点轨迹和最终引用；
 - 接入 Dify Workflow Tool；
 - 建立 Search Agent 测试集；
@@ -961,3 +965,354 @@ END
 - 完整系统综述和学术写作代写。
 
 上述能力保留为长期方案，只有在 Arxiv 全文证据提取和结论可追溯性经过评测后再逐步引入。
+
+## 16. 已确定的产品技术架构
+
+本节记录 2026-07-15 确定的目标技术架构。当前原生 Web 工作台属于交互原型，目标架构用于指导后续 React 迁移、PostgreSQL 持久化和 PDF 证据链路建设。新增组件必须解决已经出现的产品问题，不能为了丰富简历而无条件堆叠中间件。
+
+### 16.1 技术选型总表
+
+| 层级 | 目标技术 | 引入阶段 | 决策说明 |
+|---|---|---|---|
+| Web 前端 | React + TypeScript + Vite | 下一次前端工程化迭代 | 科研工作台是 SPA，不需要 Next.js 的 SSR 和第二套服务端路由 |
+| 前端状态 | React `useReducer` + 自定义 Hooks | 前端迁移 | 服务端工作流是事实来源，第一版不引入 Redux 或 Zustand |
+| 前端样式 | 复用现有设计变量和组件 CSS | 前端迁移 | 保留当前视觉，避免迁移同时重做 UI |
+| 后端 API | FastAPI + Pydantic | 已实现并长期保留 | 负责协议、校验、鉴权、SSE 适配和依赖装配 |
+| Agent 编排 | LangGraph | 已实现并长期保留 | 负责条件分支、中断恢复、研究循环和节点状态 |
+| 实时通信 | REST + SSE | 已实现并长期保留 | 研究过程以服务端事件为主，不需要 WebSocket 双向常连接 |
+| 业务数据库 | PostgreSQL | React 迁移后 | 保存研究任务、检索式、论文、事件和模型调用 |
+| 数据访问 | SQLAlchemy 2 + Alembic + psycopg 3 | PostgreSQL 阶段 | ORM、迁移和 LangGraph PostgreSQL 组件统一使用 psycopg 驱动 |
+| Graph 持久化 | `langgraph-checkpoint-postgres` | PostgreSQL 阶段 | 替换只适用于单进程开发的 `MemorySaver` |
+| 向量检索 | PostgreSQL + pgvector | `select_papers` 阶段 | 用于问题与论文摘要/段落的语义检索，不提前引入独立向量库 |
+| 任务队列 | Redis + Celery | PDF 全文阶段 | 承担 PDF 下载、解析、向量化和失败重试等长任务 |
+| 文件存储 | 开发环境本地目录，生产环境 MinIO/S3 | PDF 全文阶段 | PDF 和解析产物不写入 PostgreSQL 大字段 |
+| 本地部署 | Docker Compose | PostgreSQL 阶段 | 固化前端、API、数据库及后续 Worker 的启动方式 |
+| 可观测性 | 结构化日志 + OpenTelemetry 指标接口 | 持久化后 | 统一记录 run、thread、node、延迟、Token 和错误 |
+
+React TypeScript 工程使用 Vite 官方 React 插件和开发服务器，参考 [Vite 官方指南](https://vite.dev/guide/)。LangGraph 生产状态使用官方 PostgreSQL Checkpointer，参考 [LangGraph Checkpointer 文档](https://docs.langchain.com/oss/python/langgraph/add-memory)。语义检索优先使用 [pgvector](https://github.com/pgvector/pgvector)，在同一数据库中保留关系数据、全文检索和向量检索能力。
+
+### 16.2 目标组件关系
+
+```mermaid
+flowchart LR
+    User["研究人员"] --> Web["React + TypeScript 工作台"]
+    Web -->|"REST / SSE"| API["FastAPI API"]
+    API --> App["Application Services"]
+    App --> Graph["LangGraph Research Agent"]
+    Graph --> LLM["DeepSeek / LLM Provider"]
+    Graph --> Arxiv["arXiv Provider"]
+    App --> Repo["Repositories"]
+    Repo --> PG["PostgreSQL"]
+    Graph --> Checkpoint["Postgres Checkpointer"]
+    Checkpoint --> PG
+    PG -. "select_papers 阶段" .-> Vector["pgvector"]
+    Graph -. "PDF 阶段" .-> Queue["Redis + Celery"]
+    Queue -.-> Object["MinIO / S3"]
+```
+
+组件职责必须保持以下边界：
+
+- React 只能访问 FastAPI，不直接访问 DeepSeek、arXiv、PostgreSQL 或 Redis；
+- FastAPI 负责 HTTP/SSE 协议和用户动作，不在路由函数中实现研究逻辑；
+- Application Service 负责业务用例、事务和 Graph 调用，是 API 与 LangGraph 之间的边界；
+- LangGraph 负责研究过程控制，不承担产品历史查询和数据库报表职责；
+- Provider 封装外部模型和数据源差异，节点不拼接供应商 URL 或解析供应商私有响应；
+- Repository 管理业务表，禁止业务代码直接读取 LangGraph Checkpoint 内部表；
+- Redis 只承担临时队列、缓存和事件分发，不能作为研究任务的最终事实来源。
+
+### 16.3 前端目标设计
+
+目标前端在仓库根目录使用独立 `frontend/` 工程，通过 Vite 构建 React SPA。开发环境使用 Vite 代理 `/api` 到 FastAPI 的 `8010` 端口；生产构建生成静态资源，可以由 Nginx/CDN 托管，也可以在单机演示部署中继续由 FastAPI 托管。
+
+首批组件边界确定为：
+
+```text
+ResearchInput
+  输入问题、示例问题和启动操作
+
+WorkflowTimeline
+  显示节点 running/completed/waiting/skipped/error 状态
+
+QuestionSelection
+  处理宽泛问题的候选选择与自定义修改
+
+UsagePanel
+  汇总每次 LLM 调用的输入、输出、缓存、推理 Token 和模型信息
+
+SearchPlanPanel
+  展示关键词和 arXiv 检索式
+
+PaperList
+  展示候选论文、摘要、分类、匹配查询和链接
+
+RunHistory（PostgreSQL 阶段）
+  查询历史任务、恢复中断任务和查看失败原因
+```
+
+状态管理遵循以下规则：
+
+- `run_id` 对应一次产品研究任务，`thread_id` 对应 LangGraph 执行线程；
+- 服务端返回的任务状态是唯一事实来源，前端不能根据动画自行推断任务已完成；
+- 表单、展开项和当前选择属于本地 UI 状态，第一版使用 `useReducer` 和自定义 Hooks；
+- SSE 连接使用 `AbortController` 支持取消，断线后根据 `run_id` 重新读取任务状态；
+- 前端不保存 API Key，所有模型密钥仅存在于 FastAPI 服务端环境变量；
+- 当前 `web/` 原生页面作为迁移视觉稿，React 达到功能一致后再删除，不能长期维护两套前端逻辑。
+
+### 16.4 后端分层与目标 API
+
+后端保持一个 FastAPI 服务，但代码按职责拆分：
+
+```text
+api
+  HTTP 路由、请求响应模型、错误映射、SSE 输出
+
+application
+  创建任务、恢复任务、选择问题、取消任务和查询历史
+
+research
+  LangGraph State、节点、边和研究策略
+
+providers
+  DeepSeek、arXiv、PDF Parser、Embedding 和 Reranker 适配
+
+repositories
+  PostgreSQL 业务数据访问
+
+infrastructure
+  数据库连接、Checkpointer、Redis、对象存储和可观测性
+```
+
+当前 `POST /api/v1/research/stream` 把“创建任务”和“消费事件”放在一次连接中，适合本地原型。接入 PostgreSQL 后，目标 API 调整为：
+
+```text
+POST /api/v1/research/runs
+  创建任务，返回 202、run_id 和 thread_id
+
+GET /api/v1/research/runs/{run_id}
+  返回任务当前状态、结果摘要和等待的用户动作
+
+GET /api/v1/research/runs/{run_id}/events
+  SSE 事件流，支持 Last-Event-ID 断线续传
+
+POST /api/v1/research/runs/{run_id}/selection
+  提交候选 option_id 或用户修改后的问题
+
+POST /api/v1/research/runs/{run_id}/cancel
+  请求取消尚未完成的任务
+
+GET /api/v1/research/runs
+  分页查询历史任务
+```
+
+迁移期间保留当前 POST-SSE 接口，直到 React 前端完成新 API 切换。目标 SSE 事件使用统一外壳：
+
+```json
+{
+  "event_id": "evt_...",
+  "run_id": "run_...",
+  "sequence": 12,
+  "type": "node.running",
+  "node": "build_search_queries",
+  "message": "正在调用模型生成学术检索式",
+  "timestamp": "2026-07-15T10:00:00Z",
+  "details": {}
+}
+```
+
+`sequence` 在同一 `run_id` 内单调递增，事件写入 PostgreSQL 后再向客户端推送。断线重连时，服务端根据 `Last-Event-ID` 或最后 sequence 补发事件，前端不得依赖只存在于进程内的事件队列。
+
+### 16.5 PostgreSQL 数据职责
+
+PostgreSQL 同时承载 LangGraph Checkpoint 与产品业务数据，但两者逻辑隔离：
+
+- Checkpoint 表由 `langgraph-checkpoint-postgres` 管理，用于节点快照、中断和恢复；
+- 业务表由 SQLAlchemy 和 Alembic 管理，用于产品展示、历史查询、统计和评测；
+- 业务代码只通过 Repository 读取业务表，不依赖 Checkpoint 的内部表结构；
+- `run_id` 与 `thread_id` 显式映射，不能假设两个 ID 永远相同；
+- Checkpoint 成功不代表业务任务已完整落库，业务事件写入必须幂等。
+
+第一批业务表确定为：
+
+| 表 | 主要职责 |
+|---|---|
+| `research_runs` | 原问题、最终问题、状态、thread_id、配置、错误和时间 |
+| `research_subquestions` | 候选子问题、范围说明、顺序和用户选择 |
+| `workflow_events` | 节点事件、sequence、message、details 和时间 |
+| `search_queries` | 每次任务生成的检索式、关键词、顺序和来源模型 |
+| `papers` | 以 arXiv ID 唯一标识的论文元数据和摘要 |
+| `run_papers` | 任务与论文关联、排名、匹配查询和筛选状态 |
+| `llm_calls` | operation、provider、model、延迟、Token、缓存和调用状态 |
+
+PDF 阶段再增加：
+
+| 表 | 主要职责 |
+|---|---|
+| `paper_documents` | PDF 对象存储地址、版本、解析状态和校验值 |
+| `paper_chunks` | 章节、页码、文本位置、内容和向量 |
+| `evidence_items` | statement、quote、location、relation 和 paper/chunk 外键 |
+| `conclusions` | answer、basis、limitations、版本和验证状态 |
+
+结构化、需要筛选或关联的字段使用普通列；节点细节、Provider 原始扩展字段使用 JSONB。PDF 二进制、整篇解析文本和大型模型响应不直接写入业务主表。
+
+### 16.6 pgvector 使用边界
+
+pgvector 在 `select_papers` 和全文证据检索阶段启用，不参与当前 arXiv 元数据抓取。第一阶段向量对象为研究问题和论文摘要，后续扩展到论文段落。
+
+目标检索采用混合策略：
+
+```text
+arXiv 关键词检索候选集
+→ PostgreSQL 元数据过滤
+→ pgvector 余弦相似度召回
+→ 规则或 Reranker 重排
+→ 限制进入 PDF 解析的论文数量
+```
+
+第一版使用精确向量检索，数据量和延迟证明有必要后再增加 HNSW。暂不引入 Milvus、Qdrant、Pinecone 或 Elasticsearch，避免重复维护关系数据与向量数据的一致性。
+
+### 16.7 Redis、Celery 与对象存储边界
+
+当前问题规划和 arXiv 检索继续在 FastAPI/LangGraph 异步流程中执行，不立即引入任务队列。出现以下任务后再启用 Redis + Celery：
+
+- 并行下载多篇 PDF；
+- PDF 解析、OCR 和失败重试；
+- 文本分段、Embedding 和批量写入；
+- 单次运行超过普通 HTTP/SSE 生命周期；
+- 需要 Worker 横向扩展或任务优先级。
+
+届时职责为：
+
+```text
+LangGraph
+  决定需要执行什么、等待哪些结果以及下一条边
+
+Celery Worker
+  执行可重试的 PDF、解析、向量化和证据抽取子任务
+
+Redis
+  Celery Broker、短期缓存、分布式限流和事件通知
+
+PostgreSQL
+  任务、事件、元数据和最终状态的事实来源
+
+MinIO / S3
+  PDF、解析产物和大型中间文件
+```
+
+开发环境对象存储可以先使用受控本地目录；出现多 Worker 或远程部署时切换到 MinIO/S3。Redis 数据可以丢失并重建，PostgreSQL 和对象存储中的产品数据不能依赖 Redis 才能恢复。
+
+### 16.8 部署与配置
+
+PostgreSQL 阶段使用 Docker Compose 固化本地环境：
+
+```text
+frontend   React/Vite 开发服务或静态构建
+api        FastAPI + LangGraph
+postgres   业务数据 + Checkpoint + 后续 pgvector
+```
+
+PDF 阶段再增加：
+
+```text
+worker     Celery Worker
+redis      Broker / Cache / Rate Limit
+minio      S3-compatible PDF storage
+```
+
+生产环境中，React 静态文件由 Nginx/CDN 托管，FastAPI 和 Worker 使用独立容器，PostgreSQL、Redis 和对象存储优先使用托管服务。前端只接收公开运行配置；数据库密码、DeepSeek Key、对象存储凭据和内部 Provider 配置只注入后端。
+
+环境变量按领域命名：
+
+```text
+APP_*          服务和环境
+DATABASE_*     PostgreSQL
+LANGGRAPH_*    Checkpointer
+LLM_*          模型 Provider
+ARXIV_*        arXiv Provider
+REDIS_*        Redis
+CELERY_*       Worker
+STORAGE_*      本地或 S3 存储
+OTEL_*         可观测性
+```
+
+### 16.9 可观测性与安全基线
+
+所有日志、业务事件和模型调用至少包含：
+
+```text
+request_id
+run_id
+thread_id
+node
+provider
+model
+latency_ms
+token_usage
+status
+error_type
+```
+
+日志不得记录 API Key、完整用户凭据和 PDF 临时访问签名。LLM usage 以供应商响应为准，按 operation 保存调用明细，再聚合为运行总量。Prompt 原文默认不写日志；如果后续为调试保存，必须支持脱敏和显式开关。
+
+第一版安全要求包括：
+
+- 前端永远不持有 DeepSeek Key；
+- Provider 设置超时、有限重试和错误分类；
+- arXiv 保留访问间隔，并在多实例后使用 Redis 分布式限流；
+- PDF 下载限制大小、类型、重定向次数和允许协议；
+- 所有用户输入通过 Pydantic 校验，数据库访问使用参数化查询；
+- 任务取消是状态变更，Worker 在安全检查点响应取消，不直接强杀写入中的任务。
+
+### 16.10 实施顺序与验收标准
+
+#### A. React 前端工程化
+
+- 创建 `frontend/` React + TypeScript + Vite 工程；
+- 迁移当前输入、流程时间线、问题选择、Usage、检索式和论文列表；
+- 封装 REST 客户端与 SSE Hook，使用 Vite Proxy 联调；
+- 保持当前 API 和页面能力一致，再删除原生 `web/` 实现。
+
+验收：具体问题和宽泛问题都能完成全流程；节点状态、论文和 Token 数据不低于当前原型；前端单元测试和构建通过。
+
+#### B. PostgreSQL 业务持久化
+
+- 引入 SQLAlchemy、Alembic 和 psycopg；
+- 建立第一批七张业务表与 Repository；
+- 保存运行、事件、查询、论文和 LLM 调用；
+- 增加历史任务和单任务查询 API。
+
+验收：服务重启后能查看已完成任务；论文按 arXiv ID 去重；usage 可按任务聚合；迁移可在空库重复执行。
+
+#### C. LangGraph 持久化与可恢复事件流
+
+- 使用 Postgres Checkpointer 替换生产环境 `MemorySaver`；
+- 分离 `run_id` 和 `thread_id`；
+- 将 SSE 改为基于持久化 workflow event 的 GET 事件流；
+- 支持断线续传、历史事件回放、取消和服务重启后恢复。
+
+验收：宽泛问题在服务重启后仍可继续选择；SSE 断线重连不重复或遗漏事件；同一用户动作不会重复推进 Graph。
+
+#### D. 论文筛选与全文基础设施
+
+- 先实现摘要相关性筛选并启用 pgvector；
+- 再引入 Redis、Celery 和对象存储；
+- 完成 PDF 下载、解析、分段和失败重试；
+- 最后接入证据提取与结论生成。
+
+验收：只有高相关论文进入 PDF 解析；失败任务可安全重试；PDF 与解析版本可追踪；结论能映射到原文位置。
+
+### 16.11 当前明确不引入
+
+在出现可量化需求前，不引入以下组件：
+
+- Next.js 或第二套服务端渲染层；
+- Redux、Zustand 等全局前端状态库；
+- WebSocket；
+- Kubernetes；
+- Kafka；
+- Elasticsearch；
+- 独立向量数据库；
+- Redis/Celery 和 MinIO 的空壳部署；
+- 微服务拆分。
+
+本项目在第一版保持“React SPA + FastAPI 单体后端 + LangGraph + PostgreSQL”的模块化单体架构。只有当 PDF Worker、并发量或部署边界证明需要拆分时，才增加独立进程或基础设施。
