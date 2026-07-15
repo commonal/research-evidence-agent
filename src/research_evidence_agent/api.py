@@ -93,7 +93,9 @@ def create_research_service(
     elif settings.research_paper_provider == "arxiv":
         paper_provider = ArxivPaperProvider(
             api_url=settings.arxiv_api_url,
+            timeout_seconds=settings.arxiv_timeout_seconds,
             min_interval_seconds=settings.arxiv_min_interval_seconds,
+            max_attempts=settings.arxiv_max_attempts,
         )
     else:
         raise ValueError(

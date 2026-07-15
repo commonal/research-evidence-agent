@@ -16,6 +16,8 @@ class Settings:
     research_max_results_per_query: int = 5
     arxiv_api_url: str = "https://export.arxiv.org/api/query"
     arxiv_min_interval_seconds: float = 3.0
+    arxiv_timeout_seconds: float = 30.0
+    arxiv_max_attempts: int = 3
     llm_api_key: str = ""
     llm_base_url: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-4o-mini"
@@ -47,6 +49,16 @@ class Settings:
                 os.getenv("ARXIV_MIN_INTERVAL_SECONDS", "3"),
                 minimum=0.0,
                 maximum=30.0,
+            ),
+            arxiv_timeout_seconds=_bounded_float(
+                os.getenv("ARXIV_TIMEOUT_SECONDS", "30"),
+                minimum=5.0,
+                maximum=120.0,
+            ),
+            arxiv_max_attempts=_bounded_int(
+                os.getenv("ARXIV_MAX_ATTEMPTS", "3"),
+                minimum=1,
+                maximum=5,
             ),
             llm_api_key=os.getenv("LLM_API_KEY", "").strip(),
             llm_base_url=os.getenv(

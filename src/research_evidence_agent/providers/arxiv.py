@@ -15,6 +15,10 @@ _ATOM = "http://www.w3.org/2005/Atom"
 _NS = {"atom": _ATOM}
 
 
+class ArxivRequestError(RuntimeError):
+    """Raised after a live arXiv request exhausts its retry budget."""
+
+
 class ArxivPaperProvider:
     """Small async client for the official Arxiv Atom API."""
 
@@ -26,13 +30,15 @@ class ArxivPaperProvider:
         api_url: str = "https://export.arxiv.org/api/query",
         timeout_seconds: float = 30.0,
         min_interval_seconds: float = 3.0,
-        max_attempts: int = 2,
+        max_attempts: int = 3,
+        retry_backoff_seconds: float = 0.5,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.api_url = api_url
         self.timeout_seconds = timeout_seconds
         self.min_interval_seconds = max(0.0, min_interval_seconds)
         self.max_attempts = max(1, max_attempts)
+        self.retry_backoff_seconds = max(0.0, retry_backoff_seconds)
         self.transport = transport
         self._request_lock = asyncio.Lock()
         self._last_request_at = 0.0
@@ -55,31 +61,48 @@ class ArxivPaperProvider:
     async def _request(self, params: dict[str, Any]) -> bytes:
         async with self._request_lock:
             error: Exception | None = None
-            for attempt in range(self.max_attempts):
-                elapsed = time.monotonic() - self._last_request_at
-                if elapsed < self.min_interval_seconds:
-                    await asyncio.sleep(self.min_interval_seconds - elapsed)
-                self._last_request_at = time.monotonic()
-                try:
-                    async with httpx.AsyncClient(
-                        timeout=self.timeout_seconds,
-                        transport=self.transport,
-                        headers={
-                            "User-Agent": (
-                                "research-evidence-agent/0.1 "
-                                "(+https://github.com/commonal/research-evidence-agent)"
-                            )
-                        },
-                    ) as client:
+            async with httpx.AsyncClient(
+                timeout=self.timeout_seconds,
+                transport=self.transport,
+                headers={
+                    "User-Agent": (
+                        "research-evidence-agent/0.1 "
+                        "(+https://github.com/commonal/research-evidence-agent)"
+                    )
+                },
+            ) as client:
+                for attempt in range(self.max_attempts):
+                    elapsed = time.monotonic() - self._last_request_at
+                    if elapsed < self.min_interval_seconds:
+                        await asyncio.sleep(self.min_interval_seconds - elapsed)
+                    self._last_request_at = time.monotonic()
+                    try:
                         response = await client.get(self.api_url, params=params)
                         response.raise_for_status()
-                    return response.content
-                except (httpx.HTTPError, httpx.TimeoutException) as exc:
-                    error = exc
-                    if attempt + 1 < self.max_attempts:
-                        await asyncio.sleep(0.5 * (2**attempt))
+                        return response.content
+                    except httpx.HTTPError as exc:
+                        error = exc
+                        if attempt + 1 < self.max_attempts:
+                            await asyncio.sleep(
+                                self.retry_backoff_seconds * (2**attempt)
+                            )
             assert error is not None
-            raise error
+            raise ArxivRequestError(self._error_message(error)) from error
+
+    def _error_message(self, error: Exception) -> str:
+        attempts = f"after {self.max_attempts} attempts"
+        if isinstance(error, httpx.TimeoutException):
+            return (
+                f"arXiv request timed out after {self.timeout_seconds:g}s "
+                f"({type(error).__name__}, {attempts})"
+            )
+        if isinstance(error, httpx.HTTPStatusError):
+            return (
+                f"arXiv API returned HTTP {error.response.status_code} "
+                f"({attempts})"
+            )
+        detail = str(error).strip() or "request failed without details"
+        return f"arXiv request failed: {type(error).__name__}: {detail} ({attempts})"
 
 
 def parse_arxiv_atom(payload: bytes | str, *, matched_query: str) -> list[Paper]:

@@ -15,15 +15,16 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-load_dotenv()
-database_url = os.getenv("DATABASE_URL", "").strip()
-if database_url:
+configured_url = config.get_main_option("sqlalchemy.url").strip()
+if not configured_url or configured_url == "sqlite:///unused.db":
+    load_dotenv()
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if not database_url:
+        raise RuntimeError("DATABASE_URL is required to run database migrations")
     config.set_main_option(
         "sqlalchemy.url",
         normalize_database_url(database_url).replace("%", "%%"),
     )
-elif config.get_main_option("sqlalchemy.url") == "sqlite:///unused.db":
-    raise RuntimeError("DATABASE_URL is required to run database migrations")
 
 target_metadata = Base.metadata
 

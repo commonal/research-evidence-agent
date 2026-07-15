@@ -98,7 +98,7 @@ grade_evidence
 - React + TypeScript + Vite 科研工作台，可输入问题、选择子问题、观察节点进度并查看论文；
 - 可选 PostgreSQL 业务持久化，可保存任务、事件、论文评分和 LLM usage，并提供历史列表/详情 API；
 - DeepSeek 生成 arXiv 检索式，并记录输入、输出、缓存和推理 Token；
-- 真实 arXiv 元数据检索、跨检索式去重和部分失败保留；
+- 真实 arXiv 元数据检索、跨检索式去重、部分失败保留，以及可配置的超时重试与明确错误诊断；
 - 宽泛问题通过 LangGraph `interrupt/resume` 暂停并恢复同一线程；
 - 无需 API Key 的离线搜索与回答 Provider；
 - Provider 协议已与父项目解耦，可分别注入问题规划、论文检索和模型适配；
@@ -117,7 +117,7 @@ grade_evidence
 - `MemorySaver` 仍只支持当前进程内的中断恢复；配置 PostgreSQL 后可查看历史任务，但服务重启后不能继续等待选择的旧线程；
 - SSE 当前主要推送节点进度，不是 LLM Token 流；
 - 尚未接入 MCP ToolNode、Dify、Postgres Checkpointer 和自动化评测平台；
-- 尚未具备完整的鉴权、限流、任务取消、超时重试和监控告警。
+- 尚未具备完整的鉴权、限流、任务取消、跨 Provider 统一重试和监控告警；当前仅 arXiv Provider 具备有限超时重试。
 
 ## 4. 目标架构
 
@@ -1284,7 +1284,7 @@ error_type
 - 保存运行、事件、查询、论文和 LLM 调用；
 - 增加历史任务和单任务查询 API。
 
-验收结果：历史列表和详情 API 已实现；论文按 arXiv ID 去重，任务级评分保存在 `run_papers`，usage 可按任务重建；Alembic migration 已通过 SQLite 执行测试和 PostgreSQL 方言离线 SQL 编译。当前机器未安装 Docker/PostgreSQL，仍需在可用 PostgreSQL 实例上完成一次真实连接冒烟测试；RunHistory 前端放到下一迭代。
+验收结果：历史列表和详情 API 已实现；论文按 arXiv ID 去重，任务级评分保存在 `run_papers`，usage 可按任务重建；Alembic migration 已通过 SQLite 执行测试和 PostgreSQL 方言离线 SQL 编译，并已在本地 PostgreSQL 完成真实连接、任务保存和服务重启后历史保留验证；RunHistory 前端放到下一迭代。
 
 #### C. LangGraph 持久化与可恢复事件流
 

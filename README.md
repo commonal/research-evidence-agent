@@ -109,9 +109,13 @@ DeepSeek usage 包括输入、输出、总 token、Prompt 缓存命中/未命中
 RESEARCH_PAPER_PROVIDER=arxiv
 ACADEMIC_QUERY_PLANNER=demo
 RESEARCH_MAX_RESULTS_PER_QUERY=5
+ARXIV_TIMEOUT_SECONDS=30
+ARXIV_MAX_ATTEMPTS=3
 ```
 
 `ACADEMIC_QUERY_PLANNER=openai_compatible` 可使用兼容 OpenAI Chat Completions 的模型生成更好的英文检索式，此时还需配置 `LLM_API_KEY`、`LLM_BASE_URL` 和 `LLM_MODEL`。当前返回的是论文元数据与摘要，不能称为全文证据结论。
+
+arXiv 官方 API 偶发超时不会让整批结果丢失：Provider 默认最多尝试 3 次，仍失败时保留其他检索式的论文，并在 `search_errors` 中显示超时类型、单次超时时间和重试次数。可通过 `ARXIV_TIMEOUT_SECONDS` 和 `ARXIV_MAX_ATTEMPTS` 调整。
 
 也可单独运行真实数据源冒烟验证：
 
